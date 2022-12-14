@@ -55,6 +55,16 @@ install(
         DESTINATION lib
 )
 
+install(
+        DIRECTORY ${PROJECT_SOURCE_DIR}/../../Thirdparty/DBoW2/lib/
+        DESTINATION lib
+)
+
+install(
+        DIRECTORY ${PROJECT_SOURCE_DIR}/../../Thirdparty/g2o/lib/
+        DESTINATION lib
+)
+
 install(TARGETS kitti_lidar_projector
         DESTINATION lib/${PROJECT_NAME})
 

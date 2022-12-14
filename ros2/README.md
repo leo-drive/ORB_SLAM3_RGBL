@@ -9,6 +9,32 @@ ORBSLAM3 build including all it's dependencies
 
 Tested on Ubuntu 20.04.
 
+# 0. KITTI LIDAR PROJECTOR
+ROS2 node wrapping the ORB_SLAM3 and project lidar data to the image plane.
+
+## Build:
+You have to build the ORB_SLAM3 library first. Then, you can build the ROS2 node with:
+```
+$ cd ORB_SLAM3_ROOT_DIR
+$ chmod +x scripts/build.sh
+$ ./scripts/build.sh
+```
+You will have to tell CMake where to find it by exporting an environment variable that points to the cloned repository (as the library and include files will be in there).
+```
+$ export ORB_SLAM3_ROOT_DIR=/path/to/ORB_SLAM3
+```
+Finally, you can build the ROS2 node.
+```
+cd ORB_SLAM3_ROOT_DIR/ros2
+colcon build  --packages-select kitti_lidar_projector
+```
+
+## Usage:
+**_Change the path to the vocabulary and settings file in the contractor (src/KittiLidarProjector.cpp)._**
+```
+$ ros2 launch kitti_lidar_projector kitti_lidar_projector.launch.py
+```
+
 # 1. ROS 2 Interface for ORBSLAM3
 ROS2 node wrapping the ORB_SLAM3 library
 

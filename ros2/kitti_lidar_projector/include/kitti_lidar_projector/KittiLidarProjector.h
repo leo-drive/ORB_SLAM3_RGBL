@@ -56,7 +56,7 @@ namespace kitti_lidar_projector {
         void createProjectionMatrix();
 
         void visualizeProjection(cv::Mat &t_imRGB, sensor_msgs::msg::PointCloud2 &t_lidar_points,
-                                 std::vector<cv::KeyPoint> &t_tracked_points);
+                                 std::vector<cv::KeyPoint> &t_key_points, std::vector<ORB_SLAM3::MapPoint*> t_map_points);
 
     private:
         ORB_SLAM3::System mSLAM;

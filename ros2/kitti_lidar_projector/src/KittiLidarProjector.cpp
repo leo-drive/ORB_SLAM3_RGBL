@@ -44,8 +44,9 @@ namespace kitti_lidar_projector {
             publishTransform(Tcw, tframe);
             publishPointCloud(pc2msg, tframe);
 
-            auto temp = mSLAM.GetTrackedKeyPointsUn();
-            visualizeProjection(imRGB, pc2msg, temp);
+            auto key_points = mSLAM.GetTrackedKeyPointsUn();
+            auto map_points = mSLAM.GetTrackedMapPoints();
+            visualizeProjection(imRGB, pc2msg, key_points, map_points);
 
 //            RCLCPP_INFO(this->get_logger(), "Tracking %d/%d", ni, mvstrImageFilenamesRGB.size());
         }
@@ -208,16 +209,24 @@ namespace kitti_lidar_projector {
 
     void
     KittiLidarProjectorNode::visualizeProjection(cv::Mat &t_imRGB, sensor_msgs::msg::PointCloud2 &t_lidar_points,
-                                                 std::vector<cv::KeyPoint> &t_tracked_points) {
+                                                 std::vector<cv::KeyPoint> &t_key_points,
+                                                 std::vector<ORB_SLAM3::MapPoint *> t_map_points) {
         cv::Mat imRGB = t_imRGB.clone();
         sensor_msgs::msg::PointCloud2 lidar_points = t_lidar_points;
 
-        // Draw keypoints
-        for (auto &keypoint: t_tracked_points) {
-            cv::circle(imRGB, keypoint.pt, 2, cv::Scalar(0, 255, 0), 2);
+        // VISUALIZE KEY POINTS
+        for (auto &keypoint: t_key_points) {
+            cv::circle(imRGB, keypoint.pt, 1, cv::Scalar(0, 255, 0), 1);
         }
 
-        // Project point cloud and draw points
+        // VISUALIZE MAP POINTS
+        for (auto i = 0; i < t_map_points.size(); i++) {
+            if (t_map_points[i]) {
+                cv::circle(imRGB, cv::Point(t_map_points[i]->mTrackProjX, t_map_points[i]->mTrackProjY), 2, cv::Scalar(255, 0, 0), 2);
+            }
+        }
+
+        // VISUALIZE LIDAR POINTS
         sensor_msgs::PointCloud2Iterator<float> iter_x(lidar_points, "x");
         sensor_msgs::PointCloud2Iterator<float> iter_y(lidar_points, "y");
         sensor_msgs::PointCloud2Iterator<float> iter_z(lidar_points, "z");
@@ -283,7 +292,7 @@ namespace kitti_lidar_projector {
         t.transform.rotation.z = TWc.unit_quaternion().coeffs().z();
 
         mTransformBroadcaster->sendTransform(t);
-        }
+    }
 
     void KittiLidarProjectorNode::publishImage(cv::Mat &t_image) {
         cv_bridge::CvImage cv_image;

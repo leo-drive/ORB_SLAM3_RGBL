@@ -20,6 +20,9 @@ namespace kitti_lidar_projector {
         mPublisher = this->create_publisher<sensor_msgs::msg::PointCloud2>("kitti_lidar_projector/point_cloud", 10);
         mProjectedPublisher = this->create_publisher<sensor_msgs::msg::Image>("kitti_lidar_projector/projected_image",
                                                                               10);
+        mPosePublisher = this->create_publisher<geometry_msgs::msg::PoseStamped>("kitti_lidar_projector/pose", 10);
+
+        mTransformBroadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
         std::string dataset_path = "/home/bzeren/datasets/KITTI/deneme/00/";
         LoadImages(dataset_path, mvstrImageFilenamesRGB, mvstrPcdFilenames, mvTimestamps);
@@ -35,11 +38,11 @@ namespace kitti_lidar_projector {
             LoadPointcloudBinary(mvstrPcdFilenames[ni], pcd, pc2msg);
             double tframe = mvTimestamps[ni];
 
-            mSLAM.TrackRGBL(imRGB, pcd, tframe);
+            Sophus::SE3f Tcw = mSLAM.TrackRGBL(imRGB, pcd, tframe);
 
-            pc2msg.header.stamp = rclcpp::Time(tframe);
-            pc2msg.header.frame_id = "map";
-            mPublisher->publish(pc2msg);
+            publishPose(Tcw, tframe);
+            publishTransform(Tcw, tframe);
+            publishPointCloud(pc2msg, tframe);
 
             auto temp = mSLAM.GetTrackedKeyPointsUn();
             visualizeProjection(imRGB, pc2msg, temp);
@@ -242,10 +245,57 @@ namespace kitti_lidar_projector {
             ++iter_r;
         }
 
-        // publish image
+        publishImage(imRGB);
+    }
+
+    void KittiLidarProjectorNode::publishPose(Sophus::SE3f pose, double t_frame_time) {
+        Sophus::SE3f TWc = pose.inverse();
+
+        geometry_msgs::msg::PoseStamped pose_msg;
+        pose_msg.header.frame_id = "odom";
+        pose_msg.header.stamp = rclcpp::Time(t_frame_time);
+
+        pose_msg.pose.position.x = TWc.translation().x();
+        pose_msg.pose.position.y = TWc.translation().y();
+        pose_msg.pose.position.z = TWc.translation().z();
+
+        pose_msg.pose.orientation.w = TWc.unit_quaternion().coeffs().w();
+        pose_msg.pose.orientation.x = TWc.unit_quaternion().coeffs().x();
+        pose_msg.pose.orientation.y = TWc.unit_quaternion().coeffs().y();
+        pose_msg.pose.orientation.z = TWc.unit_quaternion().coeffs().z();
+
+        mPosePublisher->publish(pose_msg);
+    }
+
+    void KittiLidarProjectorNode::publishTransform(Sophus::SE3f pose, double t_frame_time) {
+        Sophus::SE3f TWc = pose.inverse();
+
+        geometry_msgs::msg::TransformStamped t;
+        t.header.stamp = rclcpp::Time(t_frame_time);
+        t.header.frame_id = "map";
+        t.child_frame_id = "odom";
+        t.transform.translation.x = TWc.translation().x();
+        t.transform.translation.y = TWc.translation().y();
+        t.transform.translation.z = TWc.translation().z();
+        t.transform.rotation.w = TWc.unit_quaternion().coeffs().w();
+        t.transform.rotation.x = TWc.unit_quaternion().coeffs().x();
+        t.transform.rotation.y = TWc.unit_quaternion().coeffs().y();
+        t.transform.rotation.z = TWc.unit_quaternion().coeffs().z();
+
+        mTransformBroadcaster->sendTransform(t);
+        }
+
+    void KittiLidarProjectorNode::publishImage(cv::Mat &t_image) {
         cv_bridge::CvImage cv_image;
-        cv_image.image = imRGB;
+        cv_image.image = t_image;
         cv_image.encoding = sensor_msgs::image_encodings::BGR8;
         mProjectedPublisher->publish(*cv_image.toImageMsg());
+    }
+
+    void
+    KittiLidarProjectorNode::publishPointCloud(sensor_msgs::msg::PointCloud2 &t_lidar_points, double t_frame_time) {
+        t_lidar_points.header.stamp = rclcpp::Time(t_frame_time);
+        t_lidar_points.header.frame_id = "map";
+        mPublisher->publish(t_lidar_points);
     }
 }

@@ -75,9 +75,6 @@ namespace mapper {
         std::string mPathToSequence;
 
         pcl::PointCloud<PointT>::Ptr mMap;
-
-        int counter_map_points = 0;
-        int counter_keyframes = 0;
     };
 
 }

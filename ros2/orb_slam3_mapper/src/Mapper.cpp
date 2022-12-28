@@ -7,11 +7,9 @@
 namespace mapper {
 
     Mapper::Mapper(int argc, char **argv) : Node("kitti_lidar_projector"),
-                                                                              mSLAM("/home/bzeren/leo/ORB_SLAM3_RGBL/Vocabulary/ORBvoc.txt",
-                                                                                    "/home/bzeren/leo/ORB_SLAM3_RGBL/Examples/RGB-L/KITTI00-02.yaml",
-                                                                                    ORB_SLAM3::System::RGBL, true),
-                                                                              counter_map_points(0),
-                                                                              counter_keyframes(0) {
+                                            mSLAM("/home/bzeren/leo/ORB_SLAM3_RGBL/Vocabulary/ORBvoc.txt",
+                                                  "/home/bzeren/leo/ORB_SLAM3_RGBL/Examples/RGB-L/KITTI00-02.yaml",
+                                                  ORB_SLAM3::System::RGBL, true) {
         RCLCPP_INFO(this->get_logger(), "KittiLidarProjectorNode has been initialized.");
 
         readParams();
@@ -25,6 +23,8 @@ namespace mapper {
 
         mMap = pcl::PointCloud<PointT>::Ptr(new pcl::PointCloud<PointT>);
 
+        int localization_counter = 0;
+
         cv::Mat imRGB, pcd;
         sensor_msgs::msg::PointCloud2 pc2msg;
         for (int ni = 0; ni < mvstrImageFilenamesRGB.size(); ni++) {
@@ -34,15 +34,20 @@ namespace mapper {
             double tframe = mvTimestamps[ni];
 
             Sophus::SE3f Tcw = mSLAM.TrackRGBL(imRGB, pcd, tframe);
+
+            // TODO: Ground truth map.
 //            setMapPointsPose(mSLAM.GetTrackedMapPoints(), mvPosesGT[ni], Tcw);
 
+            // Add map points to map.
             auto pose = mvPosesGT[ni];
             auto map_points = mSLAM.GetTrackedMapPoints();
             addFrameToMap(map_points, pose, Tcw);
 
-            mSLAM.ActivateLocalizationMode();
-
-//            RCLCPP_INFO(this->get_logger(), "Tracking %d/%d", ni, mvstrImageFilenamesRGB.size());
+            // Activate localization mode.
+            if (localization_counter == 30) {
+                mSLAM.ActivateLocalizationMode();
+            }
+            localization_counter++;
         }
         mSLAM.SaveTrajectoryKITTI("KITTI.txt");
         RCLCPP_INFO(this->get_logger(), "SLAM Shutdown");
@@ -74,7 +79,7 @@ namespace mapper {
     }
 
     void Mapper::LoadPointcloudBinary(const std::string &FilePath, cv::Mat &point_cloud,
-                                                       sensor_msgs::msg::PointCloud2 &point_cloud2) {
+                                      sensor_msgs::msg::PointCloud2 &point_cloud2) {
         // Initialization
         int32_t num = 1000000; // maximum Number of points to allocate
         float *data = (float *) malloc(num * sizeof(float));
@@ -130,7 +135,7 @@ namespace mapper {
     }
 
     void Mapper::LoadImages(const string &strPathToSequence, vector<string> &vstrImageFilenamesRGB,
-                                             vector<string> &vstrPcdFilenames, vector<double> &vTimestamps) {
+                            vector<string> &vstrPcdFilenames, vector<double> &vTimestamps) {
         cout << "Start Loading TimeStamps" << endl;
         ifstream fTimes;
         string strPathTimeFile = strPathToSequence + "times.txt";
@@ -205,7 +210,7 @@ namespace mapper {
     }
 
     void Mapper::addFrameToMap(vector<ORB_SLAM3::MapPoint *> vpMapPoints, Sophus::SE3f &pose,
-                                                Sophus::SE3f &Tcw) {
+                               Sophus::SE3f &Tcw) {
 
         pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
 
@@ -230,7 +235,7 @@ namespace mapper {
     }
 
     void Mapper::setMapPointsPose(vector<ORB_SLAM3::MapPoint *> vpMapPoints, Sophus::SE3f &pose,
-                                                   Sophus::SE3f &Tcw) {
+                                  Sophus::SE3f &Tcw) {
 
 //        for (auto i = 0; i < vpMapPoints.size(); i++) {
 //            if (vpMapPoints[i]) {
@@ -246,11 +251,11 @@ namespace mapper {
 //            }
 //        }
 
-        ORB_SLAM3::Atlas *mpAtlas = mSLAM.GetAtlas();
-        ORB_SLAM3::Map *mpMap = mpAtlas->GetCurrentMap();
-
-        vector<ORB_SLAM3::MapPoint *> vpMapPointsMap = mpMap->GetAllMapPoints();
-        vector<ORB_SLAM3::MapPoint *> vpRefMPs = mpMap->GetReferenceMapPoints();
+//        ORB_SLAM3::Atlas *mpAtlas = mSLAM.GetAtlas();
+//        ORB_SLAM3::Map *mpMap = mpAtlas->GetCurrentMap();
+//
+//        vector<ORB_SLAM3::MapPoint *> vpMapPointsMap = mpMap->GetAllMapPoints();
+//        vector<ORB_SLAM3::MapPoint *> vpRefMPs = mpMap->GetReferenceMapPoints();
 //        vector<ORB_SLAM3::KeyFrame *> vpKeyFrames = mpMap->GetAllKeyFrames();
 
 //        for (auto i = counter_keyframes; i < vpKeyFrames.size(); i++) {
@@ -261,20 +266,20 @@ namespace mapper {
 //            }
 //        }
 
-        for (auto i = counter_map_points; i < vpMapPointsMap.size(); i++) {
-            if (vpMapPointsMap[i]) {
-                Eigen::Vector3f p;
-                p(0, 0) = vpMapPointsMap[i]->GetWorldPos()(0, 0);
-                p(1, 0) = vpMapPointsMap[i]->GetWorldPos()(1, 0);
-                p(2, 0) = vpMapPointsMap[i]->GetWorldPos()(2, 0);
-
-                Eigen::Vector3f pGT = Tcw * p;
-                Eigen::Vector3f pSLAM = pose * pGT;
-
-                vpMapPointsMap[i]->SetWorldPos(pSLAM);
-
-                counter_map_points++;
-            }
-        }
+//        for (auto i = counter_map_points; i < vpMapPointsMap.size(); i++) {
+//            if (vpMapPointsMap[i]) {
+//                Eigen::Vector3f p;
+//                p(0, 0) = vpMapPointsMap[i]->GetWorldPos()(0, 0);
+//                p(1, 0) = vpMapPointsMap[i]->GetWorldPos()(1, 0);
+//                p(2, 0) = vpMapPointsMap[i]->GetWorldPos()(2, 0);
+//
+//                Eigen::Vector3f pGT = Tcw * p;
+//                Eigen::Vector3f pSLAM = pose * pGT;
+//
+//                vpMapPointsMap[i]->SetWorldPos(pSLAM);
+//
+//                counter_map_points++;
+//            }
+//        }
     }
 }

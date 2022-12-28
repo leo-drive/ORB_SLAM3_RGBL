@@ -2,6 +2,7 @@ kitti_lidar_projector:
   ros__parameters:
     voc_path: /home/bzeren/leo/ORB_SLAM3_RGBL/Vocabulary/ORBvoc.txt
     settings_path: /home/bzeren/leo/ORB_SLAM3_RGBL/Examples/RGB-L/KITTI00-02.yaml
+    sequence_path: /home/bzeren/datasets/KITTI/deneme/00/
     camera:
       intrinsic_matrix:
         data: [ 718.856, 0.0, 607.1928, 0.0, 718.856, 185.2157, 0.0, 0.0, 1.0 ]

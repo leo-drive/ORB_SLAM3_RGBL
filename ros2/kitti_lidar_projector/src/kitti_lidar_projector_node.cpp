@@ -8,7 +8,7 @@ int main(int argc, char **argv)
 {
     if(argc < 4)
     {
-        std::cerr << "\nUsage: ros2 launch kitti_lidar_projector kitti_lidar_projector.launch.py" << std::endl;
+        std::cerr << "\nUsage: ros2 launch kitti_lidar_projector mapper.launch.py" << std::endl;
         return 1;
     }
 

@@ -21,6 +21,7 @@
 #include <sensor_msgs/PointField.h>
 #include "sensor_msgs/point_cloud2_iterator.hpp"
 #include "cv_bridge/cv_bridge.h"
+
 #include "tf2_ros/static_transform_broadcaster.h"
 #include "tf2_ros/transform_broadcaster.h"
 #include <tf2/LinearMath/Quaternion.h>
@@ -29,10 +30,38 @@
 #include <tf2/transform_datatypes.h>
 #include <tf2/convert.h>
 
+#include <point_cloud_msg_wrapper/point_cloud_msg_wrapper.hpp>
+
+
 namespace kitti_lidar_projector {
+
+    template<typename T>
+    bool rel_eq(const T &a, const T &b) {
+        static_assert(
+                std::is_floating_point<T>::value, "Float comparisons only support floating point types.");
+
+        const auto delta = std::abs(a - b);
+        const auto larger = std::max(std::abs(a), std::abs(b));
+        const auto max_rel_delta = (larger * std::numeric_limits<T>::epsilon());
+        return delta <= max_rel_delta;
+    }
 
     class KittiLidarProjectorNode : public rclcpp::Node {
     public:
+        struct PointXYZI {
+            float x;
+            float y;
+            float z;
+            float intensity;
+
+            friend bool operator==(const PointXYZI &p1, const PointXYZI &p2) noexcept {
+                return rel_eq(p1.x, p2.x) && rel_eq(p1.y, p2.y) && rel_eq(p1.z, p2.z) &&
+                       rel_eq(p1.intensity, p2.intensity);
+            }
+        };
+
+        using CloudModifierXYZI = point_cloud_msg_wrapper::PointCloud2Modifier<PointXYZI>;
+
         KittiLidarProjectorNode(int argc, char **argv);
 
         ~KittiLidarProjectorNode();
@@ -56,7 +85,8 @@ namespace kitti_lidar_projector {
         void createProjectionMatrix();
 
         void visualizeProjection(cv::Mat &t_imRGB, sensor_msgs::msg::PointCloud2 &t_lidar_points,
-                                 std::vector<cv::KeyPoint> &t_key_points, std::vector<ORB_SLAM3::MapPoint*> t_map_points);
+                                 std::vector<cv::KeyPoint> &t_key_points,
+                                 std::vector<ORB_SLAM3::MapPoint *> t_map_points);
 
     private:
         ORB_SLAM3::System mSLAM;
@@ -65,11 +95,18 @@ namespace kitti_lidar_projector {
         vector<std::string> mvstrPcdFilenames;
         vector<double> mvTimestamps;
 
-        rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr mPublisher;
-        rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mProjectedPublisher;
-        rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr mPosePublisher;
+        rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr mPublisher{};
+        rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr mProjectedPublisher{};
+        rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr mPosePublisher{};
+
+        std::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_static_broadcaster_;
+        geometry_msgs::msg::TransformStamped trans_;
 
         std::unique_ptr<tf2_ros::TransformBroadcaster> mTransformBroadcaster;
+
+        std::string mPathToVocabulary;
+        std::string mPathToSettings;
+        std::string mPathToSequence;
 
         int mCameraHeight;
         int mCameraWidth;

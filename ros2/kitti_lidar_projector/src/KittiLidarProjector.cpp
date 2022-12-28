@@ -24,7 +24,18 @@ namespace kitti_lidar_projector {
 
         mTransformBroadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
-        std::string dataset_path = "/home/bzeren/datasets/KITTI/deneme/00/";
+
+        tf_static_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
+
+        trans_.header.stamp = this->get_clock()->now();
+        trans_.header.frame_id = "map";
+        trans_.child_frame_id = "xyzi";
+        trans_.transform.rotation.set__w(1.0);
+        trans_.transform.translation.set__x(0.0);
+        trans_.transform.translation.set__y(0.0);
+        tf_static_broadcaster_->sendTransform(trans_);
+
+        std::string dataset_path = mPathToSequence.c_str();
         LoadImages(dataset_path, mvstrImageFilenamesRGB, mvstrPcdFilenames, mvTimestamps);
         RCLCPP_INFO(this->get_logger(), "Loaded %d images and %d pointclouds.", mvstrImageFilenamesRGB.size(),
                     mvstrPcdFilenames.size());
@@ -42,14 +53,19 @@ namespace kitti_lidar_projector {
 
             publishPose(Tcw, tframe);
             publishTransform(Tcw, tframe);
-            publishPointCloud(pc2msg, tframe);
+//            publishPointCloud(pc2msg, tframe);
 
             auto key_points = mSLAM.GetTrackedKeyPointsUn();
             auto map_points = mSLAM.GetTrackedMapPoints();
-            visualizeProjection(imRGB, pc2msg, key_points, map_points);
+//            visualizeProjection(imRGB, pc2msg, key_points, map_points);
+
+//            last_map_point->SetWorldPos()
 
 //            RCLCPP_INFO(this->get_logger(), "Tracking %d/%d", ni, mvstrImageFilenamesRGB.size());
         }
+
+        RCLCPP_INFO(this->get_logger(), "SLAM Shutdown");
+        mSLAM.Shutdown();
     }
 
     KittiLidarProjectorNode::~KittiLidarProjectorNode() {
@@ -57,6 +73,9 @@ namespace kitti_lidar_projector {
     }
 
     void KittiLidarProjectorNode::readParams() {
+        this->declare_parameter("voc_path");
+        this->declare_parameter("settings_path");
+        this->declare_parameter("sequence_path");
         this->declare_parameter("camera.intrinsic_matrix.data");
         this->declare_parameter("camera.distortion_coefficients.data");
         this->declare_parameter("camera.height");
@@ -65,6 +84,9 @@ namespace kitti_lidar_projector {
         this->declare_parameter("projection.min_dist");
         this->declare_parameter("projection.max_dist");
 
+        this->get_parameter("voc_path", mPathToVocabulary);
+        this->get_parameter("settings_path", mPathToSettings);
+        this->get_parameter("sequence_path", mPathToSequence);
         this->get_parameter("camera.intrinsic_matrix.data", mCameraIntrinsicMatrix);
         this->get_parameter("camera.distortion_coefficients.data", mCameraDistortionCoefficients);
         this->get_parameter("camera.height", mCameraHeight);
@@ -73,6 +95,9 @@ namespace kitti_lidar_projector {
         this->get_parameter("projection.min_dist", mMinDistance);
         this->get_parameter("projection.max_dist", mMaxDistance);
 
+        RCLCPP_INFO(this->get_logger(), "Vocabulary path: %s", mPathToVocabulary.c_str());
+        RCLCPP_INFO(this->get_logger(), "Settings path: %s", mPathToSettings.c_str());
+        RCLCPP_INFO(this->get_logger(), "Sequence path: %s", mPathToSequence.c_str());
         RCLCPP_INFO(this->get_logger(), "Camera intrinsic matrix: %f %f %f %f %f %f %f %f %f",
                     mCameraIntrinsicMatrix[0], mCameraIntrinsicMatrix[1], mCameraIntrinsicMatrix[2],
                     mCameraIntrinsicMatrix[3], mCameraIntrinsicMatrix[4], mCameraIntrinsicMatrix[5],
@@ -112,16 +137,9 @@ namespace kitti_lidar_projector {
         // Clear Pointcloud variable
         point_cloud = cv::Mat::zeros(cv::Size(num, 4), CV_32F);
 
-        sensor_msgs::PointCloud2Modifier modifier(point_cloud2);
-        modifier.resize(num);
-        modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::msg::PointField::FLOAT32,
-                                      "y", 1, sensor_msgs::msg::PointField::FLOAT32,
-                                      "z", 1, sensor_msgs::msg::PointField::FLOAT32,
-                                      "intensity", 1, sensor_msgs::msg::PointField::FLOAT32);
-        sensor_msgs::PointCloud2Iterator<float> iter_x(point_cloud2, "x");
-        sensor_msgs::PointCloud2Iterator<float> iter_y(point_cloud2, "y");
-        sensor_msgs::PointCloud2Iterator<float> iter_z(point_cloud2, "z");
-        sensor_msgs::PointCloud2Iterator<float> iter_r(point_cloud2, "intensity");
+        sensor_msgs::msg::PointCloud2 msg_cloud_xyzi;
+        CloudModifierXYZI modifier{ msg_cloud_xyzi, "xyzi" };
+        modifier.reserve(num);
 
         // Format data as desired
         for (int32_t i = 0; i < num; i++) {
@@ -130,20 +148,22 @@ namespace kitti_lidar_projector {
             point_cloud.at<float>(2, i) = (float) *pz;
             point_cloud.at<float>(3, i) = (float) 1;
 
-            *iter_x = (float) *px;
-            *iter_y = (float) *py;
-            *iter_z = (float) *pz;
-            *iter_r = (float) *pr;
+            PointXYZI point;
+            point.x = *px;
+            point.y = *py;
+            point.z = *pz;
+            point.intensity = *pr;
+            modifier.push_back(point);
 
             px += 4;
             py += 4;
             pz += 4;
             pr += 4;
-            ++iter_x;
-            ++iter_y;
-            ++iter_z;
-            ++iter_r;
         }
+        // print point cloud data
+         std::cout << modifier[12].x << std::endl;
+
+        mPublisher->publish(msg_cloud_xyzi);
 
         // Close Stream and Free Memory
         fclose(stream);
@@ -222,7 +242,8 @@ namespace kitti_lidar_projector {
         // VISUALIZE MAP POINTS
         for (auto i = 0; i < t_map_points.size(); i++) {
             if (t_map_points[i]) {
-                cv::circle(imRGB, cv::Point(t_map_points[i]->mTrackProjX, t_map_points[i]->mTrackProjY), 2, cv::Scalar(255, 0, 0), 2);
+                cv::circle(imRGB, cv::Point(t_map_points[i]->mTrackProjX, t_map_points[i]->mTrackProjY), 2,
+                           cv::Scalar(255, 0, 0), 2);
             }
         }
 

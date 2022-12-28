@@ -1,0 +1,25 @@
+mapper_node:
+  ros__parameters:
+    voc_path: /home/bzeren/leo/ORB_SLAM3_RGBL/Vocabulary/ORBvoc.txt
+    settings_path: /home/bzeren/leo/ORB_SLAM3_RGBL/Examples/RGB-L/KITTI00-02.yaml
+    sequence_path: /home/bzeren/datasets/KITTI/deneme/00/
+    camera:
+      intrinsic_matrix:
+        data: [ 718.856, 0.0, 607.1928, 0.0, 718.856, 185.2157, 0.0, 0.0, 1.0 ]
+        rows: 3
+        cols: 3
+      distortion_coefficients:
+        data: [ 0.0, 0.0, 0.0, 0.0, 0.0 ]
+        rows: 1
+        cols: 5
+      image_width: 1241
+      image_height: 376
+    lidar_camera_transform:
+      data: [ 4.276802385584e-04, -9.999672484946e-01, -8.084491683471e-03, -1.198459927713e-02,
+              -7.210626507497e-03, 8.081198471645e-03, -9.999413164504e-01, -5.403984729748e-02,
+              9.999738645903e-01, 4.859485810390e-04, -7.206933692422e-03, -2.921968648686e-01 ]
+      rows: 3
+      cols: 4
+    projection:
+      min_dist: 5.0
+      max_dist: 100.0

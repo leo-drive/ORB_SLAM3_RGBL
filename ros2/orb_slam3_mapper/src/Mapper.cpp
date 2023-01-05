@@ -14,6 +14,15 @@ namespace mapper {
 
         readParams();
 
+        mCurrCameraMarkerPublisher = this->create_publisher<visualization_msgs::msg::Marker>(
+                "/orb_slam3_mapper/camera_marker", 1);
+        mKeyFramesMarkerPublisher = this->create_publisher<visualization_msgs::msg::MarkerArray>(
+                "/orb_slam3_mapper/keyframes_marker", 1);
+        mKeyFramesGTMarkerPublisher = this->create_publisher<visualization_msgs::msg::MarkerArray>(
+                "/orb_slam3_mapper/keyframes_gt_marker", 1);
+        mPosesMarkerPublisher = this->create_publisher<visualization_msgs::msg::MarkerArray>(
+                "/orb_slam3_mapper/poses_marker", 1);
+
         std::string dataset_path = mPathToSequence.c_str();
         LoadImages(dataset_path, mvstrImageFilenamesRGB, mvstrPcdFilenames, mvTimestamps);
         LoadGroundTruth(dataset_path, mvPosesGT);
@@ -33,18 +42,21 @@ namespace mapper {
 
             double tframe = mvTimestamps[ni];
 
-            Sophus::SE3f Tcw = mSLAM.TrackRGBL(imRGB, pcd, tframe);
-
-            // TODO: Ground truth map.
-//            setMapPointsPose(mSLAM.GetTrackedMapPoints(), mvPosesGT[ni], Tcw);
+            Sophus::SE3f Tcw = mSLAM.TrackRGBL(imRGB, pcd, tframe, mvPosesGT[ni]);
 
             // Add map points to map.
             auto pose = mvPosesGT[ni];
             auto map_points = mSLAM.GetTrackedMapPoints();
             addFrameToMap(map_points, pose, Tcw);
 
-            // Activate localization mode.
-            if (localization_counter == 30) {
+            // TODO: Ground truth map.
+//            setMapPointsPose(mSLAM.GetTrackedMapPoints(), mvPosesGT[ni], Tcw);
+
+            // TODO: Visualize pangolin things with rviz.
+            visualizer(Tcw, pose);
+
+//             Activate localization mode.
+            if (localization_counter == 100) {
                 mSLAM.ActivateLocalizationMode();
             }
             localization_counter++;
@@ -96,17 +108,6 @@ namespace mapper {
         // Clear Pointcloud variable
         point_cloud = cv::Mat::zeros(cv::Size(num, 4), CV_32F);
 
-        sensor_msgs::PointCloud2Modifier modifier(point_cloud2);
-        modifier.resize(num);
-        modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::msg::PointField::FLOAT32,
-                                      "y", 1, sensor_msgs::msg::PointField::FLOAT32,
-                                      "z", 1, sensor_msgs::msg::PointField::FLOAT32,
-                                      "intensity", 1, sensor_msgs::msg::PointField::FLOAT32);
-        sensor_msgs::PointCloud2Iterator<float> iter_x(point_cloud2, "x");
-        sensor_msgs::PointCloud2Iterator<float> iter_y(point_cloud2, "y");
-        sensor_msgs::PointCloud2Iterator<float> iter_z(point_cloud2, "z");
-        sensor_msgs::PointCloud2Iterator<float> iter_r(point_cloud2, "intensity");
-
         // Format data as desired
         for (int32_t i = 0; i < num; i++) {
             point_cloud.at<float>(0, i) = (float) *px;
@@ -114,19 +115,10 @@ namespace mapper {
             point_cloud.at<float>(2, i) = (float) *pz;
             point_cloud.at<float>(3, i) = (float) 1;
 
-            *iter_x = (float) *px;
-            *iter_y = (float) *py;
-            *iter_z = (float) *pz;
-            *iter_r = (float) *pr;
-
             px += 4;
             py += 4;
             pz += 4;
             pr += 4;
-            ++iter_x;
-            ++iter_y;
-            ++iter_z;
-            ++iter_r;
         }
 
         // Close Stream and Free Memory
@@ -234,6 +226,151 @@ namespace mapper {
         *mMap += *cloud;
     }
 
+    void Mapper::visualizer(const Sophus::SE3f &Tcw, Sophus::SE3f &poseGT) {
+
+        // Aktif frame görselleştirme (yeşil) --  Ros marker ile  +++
+        // Bütün keyframeler görselleştirme  (kırmızı) --  Ros marker array ile  +++
+        // GT poselarını görselleştirme (mavi)  --  Ros marker array ile  +++
+        // Bütün 3d noktaları görselleştirme  --  Nav  path ile
+        // Aktif 3d noktaları görselleştirme  --  point cloud ile
+
+        // Visualize active frame
+        Eigen::Matrix4f tcw = Tcw.inverse().matrix();
+        geometry_msgs::msg::Pose pose;
+        pose.position.x = tcw(0, 3);
+        pose.position.y = tcw(1, 3);
+        pose.position.z = tcw(2, 3);
+        Eigen::Quaternionf q(tcw.block<3, 3>(0, 0));
+        pose.orientation.x = q.x();
+        pose.orientation.y = q.y();
+        pose.orientation.z = q.z();
+        pose.orientation.w = q.w();
+        std_msgs::msg::ColorRGBA color;
+        color.r = 0.0;
+        color.g = 1.0;
+        color.b = 0.0;
+        color.a = 1.0;
+        visualization_msgs::msg::Marker marker;
+        marker.header.frame_id = "map";
+        marker.header.stamp = rclcpp::Clock().now();
+        marker.ns = "active_frame";
+        marker.action = visualization_msgs::msg::Marker::ADD;
+        marker.id = 0;
+        marker.pose = pose;
+        marker.color = color;
+        marker.scale.x = 4.0;
+        marker.scale.y = 4.0;
+        marker.scale.z = 4.0;
+        mCurrCameraMarkerPublisher->publish(marker);
+
+        // Visualize current poses
+        visualization_msgs::msg::MarkerArray markerArrayPoses;
+        mvKeyFrames.push_back(Tcw);
+        for (int i = 0; i < mvKeyFrames.size(); i++) {
+            Eigen::Matrix4f tcw = mvKeyFrames[i].inverse().matrix();
+            geometry_msgs::msg::Pose pose;
+            pose.position.x = tcw(0, 3);
+            pose.position.y = tcw(1, 3);
+            pose.position.z = tcw(2, 3);
+            Eigen::Quaternionf q(tcw.block<3, 3>(0, 0));
+            pose.orientation.x = q.x();
+            pose.orientation.y = q.y();
+            pose.orientation.z = q.z();
+            pose.orientation.w = q.w();
+            std_msgs::msg::ColorRGBA color;
+            color.r = 0.0;
+            color.g = 1.0;
+            color.b = 1.0;
+            color.a = 1.0;
+            visualization_msgs::msg::Marker marker;
+            marker.header.frame_id = "map";
+            marker.header.stamp = rclcpp::Clock().now();
+            marker.ns = "keyframes";
+            marker.action = visualization_msgs::msg::Marker::ADD;
+            marker.id = i;
+            marker.pose = pose;
+            marker.color = color;
+            marker.scale.x = 0.5;
+            marker.scale.y = 0.5;
+            marker.scale.z = 0.5;
+            markerArrayPoses.markers.push_back(marker);
+        }
+        mPosesMarkerPublisher->publish(markerArrayPoses);
+
+
+        // Visualize keyframes
+        visualization_msgs::msg::MarkerArray markerArray;
+        vector<ORB_SLAM3::KeyFrame*> vpKFs = mSLAM.GetAtlas()->GetCurrentMap()->GetAllKeyFrames();
+        for (auto i = 0; i < vpKFs.size(); i++) {
+            Eigen::Matrix4f Tcw = vpKFs[i]->GetPose().inverse().matrix();
+            geometry_msgs::msg::Pose pose;
+            pose.position.x = Tcw(0, 3);
+            pose.position.y = Tcw(1, 3);
+            pose.position.z = Tcw(2, 3);
+            Eigen::Quaternionf q(Tcw.block<3, 3>(0, 0));
+            pose.orientation.x = q.x();
+            pose.orientation.y = q.y();
+            pose.orientation.z = q.z();
+            pose.orientation.w = q.w();
+            std_msgs::msg::ColorRGBA color;
+            color.r = 1.0;
+            color.g = 0.0;
+            color.b = 0.0;
+            color.a = 1.0;
+
+            visualization_msgs::msg::Marker marker;
+            marker.header.frame_id = "map";
+            marker.header.stamp = rclcpp::Clock().now();
+            marker.ns = "current_poses";
+            marker.action = visualization_msgs::msg::Marker::ADD;
+            marker.id = i;
+            marker.pose = pose;
+            marker.color = color;
+            marker.scale.x = 1.0;
+            marker.scale.y = 1.0;
+            marker.scale.z = 1.0;
+            markerArray.markers.push_back(marker);
+        }
+        mKeyFramesMarkerPublisher->publish(markerArray);
+
+        // Visualize GT poses
+        visualization_msgs::msg::MarkerArray markerArrayGT;
+        mvKeyFramesGT.push_back(poseGT);
+        for (auto i = 0; i < mvKeyFramesGT.size(); i++) {
+            Eigen::Matrix4f Tcw = mvKeyFramesGT[i].matrix();
+            geometry_msgs::msg::Pose pose;
+            pose.position.x = Tcw(0, 3);
+            pose.position.y = Tcw(1, 3);
+            pose.position.z = Tcw(2, 3);
+            Eigen::Quaternionf q(Tcw.block<3, 3>(0, 0));
+            pose.orientation.x = q.x();
+            pose.orientation.y = q.y();
+            pose.orientation.z = q.z();
+            pose.orientation.w = q.w();
+            std_msgs::msg::ColorRGBA color;
+            color.r = 0.0;
+            color.g = 0.0;
+            color.b = 1.0;
+            color.a = 1.0;
+            visualization_msgs::msg::Marker marker;
+            marker.header.frame_id = "map";
+            marker.header.stamp = rclcpp::Clock().now();
+            marker.ns = "gt_poses";
+            marker.action = visualization_msgs::msg::Marker::ADD;
+            marker.id = i;
+            marker.pose = pose;
+            marker.color = color;
+            marker.scale.x = 1.0;
+            marker.scale.y = 1.0;
+            marker.scale.z = 1.0;
+            markerArrayGT.markers.push_back(marker);
+        }
+        mKeyFramesGTMarkerPublisher->publish(markerArrayGT);
+
+        // Visualize all 3d points
+
+    }
+
     void Mapper::setMapPointsPose(vector<ORB_SLAM3::MapPoint *> vpMapPoints, Sophus::SE3f &pose,
                                   Sophus::SE3f &Tcw) {
 
@@ -281,5 +418,6 @@ namespace mapper {
 //                counter_map_points++;
 //            }
 //        }
+
     }
 }

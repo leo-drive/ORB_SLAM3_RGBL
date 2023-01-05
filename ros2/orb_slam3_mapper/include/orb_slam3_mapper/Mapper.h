@@ -21,9 +21,12 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "sensor_msgs/msg/image.hpp"
-#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <sensor_msgs/PointField.h>
 #include "sensor_msgs/point_cloud2_iterator.hpp"
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/pose.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 #include "cv_bridge/cv_bridge.h"
 
 #include "tf2_ros/static_transform_broadcaster.h"
@@ -42,7 +45,6 @@ namespace mapper {
 
     class Mapper : public rclcpp::Node {
     public:
-
         Mapper(int argc, char **argv);
 
         ~Mapper();
@@ -61,7 +63,14 @@ namespace mapper {
 
         void setMapPointsPose(vector<ORB_SLAM3::MapPoint *> vpMapPoints, Sophus::SE3f &pose, Sophus::SE3f &Tcw);
 
+        void visualizer(const Sophus::SE3f &Tcw, Sophus::SE3f &poseGT);
+
     private:
+        rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr mCurrCameraMarkerPublisher{};
+        rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr mKeyFramesMarkerPublisher{};
+        rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr mKeyFramesGTMarkerPublisher{};
+        rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr mPosesMarkerPublisher{};
+
         ORB_SLAM3::System mSLAM;
 
         vector<std::string> mvstrImageFilenamesRGB;
@@ -69,12 +78,15 @@ namespace mapper {
         vector<double> mvTimestamps;
         vector<Sophus::SE3f> mvPosesGT;
 
-
         std::string mPathToVocabulary;
         std::string mPathToSettings;
         std::string mPathToSequence;
 
         pcl::PointCloud<PointT>::Ptr mMap;
+
+        // Visualizer
+        vector<Sophus::SE3f> mvKeyFrames;
+        vector<Sophus::SE3f> mvKeyFramesGT;
     };
 
 }

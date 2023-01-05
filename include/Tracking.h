@@ -73,6 +73,7 @@ public:
     Sophus::SE3f GrabImageStereo(const cv::Mat &imRectLeft,const cv::Mat &imRectRight, const double &timestamp, string filename);
     Sophus::SE3f GrabImageRGBD(const cv::Mat &imRGB,const cv::Mat &imD, const double &timestamp, string filename);
     Sophus::SE3f GrabImageRGBL(const cv::Mat &imRGB,const cv::Mat &imD, DepthModule& DepthHandler, const double &timestamp, string filename);
+    Sophus::SE3f GrabImageRGBL(const cv::Mat &imRGB,const cv::Mat &imD, DepthModule& DepthHandler, const double &timestamp, string filename, const Sophus::SE3f &PoseGT);
     Sophus::SE3f GrabImageMonocular(const cv::Mat &im, const double &timestamp, string filename);
 
     void GrabImuData(const IMU::Point &imuMeasurement);
@@ -139,6 +140,9 @@ public:
     // Current Frame
     Frame mCurrentFrame;
     Frame mLastFrame;
+
+    // Current Ground Truth
+    Sophus::SE3f mTcw_gt;
 
     cv::Mat mImGray;
     cv::Mat imDepth;

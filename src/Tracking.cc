@@ -1561,7 +1561,45 @@ Sophus::SE3f Tracking::GrabImageRGBD(const cv::Mat &imRGB,const cv::Mat &imD, co
 }
 
 Sophus::SE3f Tracking::GrabImageRGBL(const cv::Mat &imRGB,const cv::Mat& PointCloud, DepthModule& DepthHandler, const double &timestamp, string filename)
+    {
+        mImGray = imRGB;
+
+        if(mImGray.channels()==3)
+        {
+            if(mbRGB)
+                cvtColor(mImGray,mImGray,cv::COLOR_RGB2GRAY);
+            else
+                cvtColor(mImGray,mImGray,cv::COLOR_BGR2GRAY);
+        }
+        else if(mImGray.channels()==4)
+        {
+            if(mbRGB)
+                cvtColor(mImGray,mImGray,cv::COLOR_RGBA2GRAY);
+            else
+                cvtColor(mImGray,mImGray,cv::COLOR_BGRA2GRAY);
+        }
+
+        mCurrentFrame = Frame(mImGray, PointCloud,timestamp,mpORBextractorLeft,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth,mpCamera, &DepthHandler);
+
+        imDepth = mCurrentFrame.DepthHandler->ProcessedDepthMap;
+
+        mCurrentFrame.mNameFile = filename;
+        mCurrentFrame.mnDataset = mnNumDataset;
+
+#ifdef REGISTER_TIMES
+        vdORBExtract_ms.push_back(mCurrentFrame.mTimeORB_Ext);
+#endif
+
+        Track();
+
+        // return mCurrentFrame.mTcw.clone();
+        return mCurrentFrame.GetPose();
+    }
+
+Sophus::SE3f Tracking::GrabImageRGBL(const cv::Mat &imRGB,const cv::Mat& PointCloud, DepthModule& DepthHandler, const double &timestamp, string filename, const Sophus::SE3f &PoseGT)
 {
+    mTcw_gt = PoseGT;
+
     mImGray = imRGB;
 
     if(mImGray.channels()==3)
@@ -1580,6 +1618,7 @@ Sophus::SE3f Tracking::GrabImageRGBL(const cv::Mat &imRGB,const cv::Mat& PointCl
     }
 
     mCurrentFrame = Frame(mImGray, PointCloud,timestamp,mpORBextractorLeft,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth,mpCamera, &DepthHandler);
+    mCurrentFrame.SetPose(mTcw_gt.inverse());
 
     imDepth = mCurrentFrame.DepthHandler->ProcessedDepthMap;
 
@@ -2753,6 +2792,8 @@ void Tracking::CheckReplacedInLastFrame()
 
 bool Tracking::TrackReferenceKeyFrame()
 {
+    cout << " ----------- Tracking::TrackReferenceKeyFrame()" << endl;
+
     // Compute Bag of Words vector
     mCurrentFrame.ComputeBoW();
 
@@ -2770,13 +2811,13 @@ bool Tracking::TrackReferenceKeyFrame()
     }
 
     mCurrentFrame.mvpMapPoints = vpMapPointMatches;
-    mCurrentFrame.SetPose(mLastFrame.GetPose());
+//    mCurrentFrame.SetPose(mLastFrame.GetPose());
 
     //mCurrentFrame.PrintPointDistribution();
 
 
     // cout << " TrackReferenceKeyFrame mLastFrame.mTcw:  " << mLastFrame.mTcw << endl;
-    Optimizer::PoseOptimization(&mCurrentFrame);
+//    Optimizer::PoseOptimization(&mCurrentFrame);
 
     // Discard outliers
     int nmatchesMap = 0;
@@ -2899,10 +2940,10 @@ bool Tracking::TrackWithMotionModel()
         PredictStateIMU();
         return true;
     }
-    else
-    {
-        mCurrentFrame.SetPose(mVelocity * mLastFrame.GetPose());
-    }
+//    else
+//    {
+//        mCurrentFrame.SetPose(mVelocity * mLastFrame.GetPose());
+//    }
 
 
 
@@ -2940,7 +2981,7 @@ bool Tracking::TrackWithMotionModel()
     }
 
     // Optimize frame pose with all matches
-    Optimizer::PoseOptimization(&mCurrentFrame);
+//    Optimizer::PoseOptimization(&mCurrentFrame);
 
     // Discard outliers
     int nmatchesMap = 0;
@@ -3001,30 +3042,30 @@ bool Tracking::TrackLocalMap()
         }
 
     int inliers;
-    if (!mpAtlas->isImuInitialized())
-        Optimizer::PoseOptimization(&mCurrentFrame);
-    else
-    {
-        if(mCurrentFrame.mnId<=mnLastRelocFrameId+mnFramesToResetIMU)
-        {
-            Verbose::PrintMess("TLM: PoseOptimization ", Verbose::VERBOSITY_DEBUG);
-            Optimizer::PoseOptimization(&mCurrentFrame);
-        }
-        else
-        {
-            // if(!mbMapUpdated && mState == OK) //  && (mnMatchesInliers>30))
-            if(!mbMapUpdated) //  && (mnMatchesInliers>30))
-            {
-                Verbose::PrintMess("TLM: PoseInertialOptimizationLastFrame ", Verbose::VERBOSITY_DEBUG);
-                inliers = Optimizer::PoseInertialOptimizationLastFrame(&mCurrentFrame); // , !mpLastKeyFrame->GetMap()->GetIniertialBA1());
-            }
-            else
-            {
-                Verbose::PrintMess("TLM: PoseInertialOptimizationLastKeyFrame ", Verbose::VERBOSITY_DEBUG);
-                inliers = Optimizer::PoseInertialOptimizationLastKeyFrame(&mCurrentFrame); // , !mpLastKeyFrame->GetMap()->GetIniertialBA1());
-            }
-        }
-    }
+//    if (!mpAtlas->isImuInitialized())
+//        Optimizer::PoseOptimization(&mCurrentFrame);
+//    else
+//    {
+//        if(mCurrentFrame.mnId<=mnLastRelocFrameId+mnFramesToResetIMU)
+//        {
+//            Verbose::PrintMess("TLM: PoseOptimization ", Verbose::VERBOSITY_DEBUG);
+//            Optimizer::PoseOptimization(&mCurrentFrame);
+//        }
+//        else
+//        {
+//            // if(!mbMapUpdated && mState == OK) //  && (mnMatchesInliers>30))
+//            if(!mbMapUpdated) //  && (mnMatchesInliers>30))
+//            {
+//                Verbose::PrintMess("TLM: PoseInertialOptimizationLastFrame ", Verbose::VERBOSITY_DEBUG);
+//                inliers = Optimizer::PoseInertialOptimizationLastFrame(&mCurrentFrame); // , !mpLastKeyFrame->GetMap()->GetIniertialBA1());
+//            }
+//            else
+//            {
+//                Verbose::PrintMess("TLM: PoseInertialOptimizationLastKeyFrame ", Verbose::VERBOSITY_DEBUG);
+//                inliers = Optimizer::PoseInertialOptimizationLastKeyFrame(&mCurrentFrame); // , !mpLastKeyFrame->GetMap()->GetIniertialBA1());
+//            }
+//        }
+//    }
 
     aux1 = 0, aux2 = 0;
     for(int i=0; i<mCurrentFrame.N; i++)

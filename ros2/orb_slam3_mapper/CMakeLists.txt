@@ -18,6 +18,9 @@ find_package(PCL 1.12.0 REQUIRED)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(message_filters REQUIRED)
 find_package(tf2 REQUIRED)
@@ -56,6 +59,7 @@ target_link_libraries(mapper_node
 ament_target_dependencies(mapper_node
         rclcpp
         sensor_msgs
+        visualization_msgs
         cv_bridge
         message_filters
         Pangolin

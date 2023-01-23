@@ -1599,6 +1599,7 @@ Sophus::SE3f Tracking::GrabImageRGBL(const cv::Mat &imRGB,const cv::Mat& PointCl
 Sophus::SE3f Tracking::GrabImageRGBL(const cv::Mat &imRGB,const cv::Mat& PointCloud, DepthModule& DepthHandler, const double &timestamp, string filename, const Sophus::SE3f &PoseGT)
 {
     mTcw_gt = PoseGT;
+    mbIsGroundTruth = true;
 
     mImGray = imRGB;
 
@@ -2018,11 +2019,13 @@ void Tracking::Track()
                 if((!mbVelocity && !pCurrentMap->isImuInitialized()) || mCurrentFrame.mnId<mnLastRelocFrameId+2)
                 {
                     Verbose::PrintMess("TRACK: Track with respect to the reference KF ", Verbose::VERBOSITY_DEBUG);
+                    cout << "TrackReferanceKeyFrame........................." << endl;
                     bOK = TrackReferenceKeyFrame();
                 }
                 else
                 {
                     Verbose::PrintMess("TRACK: Track with motion model", Verbose::VERBOSITY_DEBUG);
+                    cout << "TrackWithMotionModel........................." << endl;
                     bOK = TrackWithMotionModel();
                     if(!bOK)
                         bOK = TrackReferenceKeyFrame();
@@ -2073,6 +2076,7 @@ void Tracking::Track()
                     else
                     {
                         // Relocalization
+                        cout << "Relocalization........................." << endl;
                         bOK = Relocalization();
                         //std::cout << "mCurrentFrame.mTimeStamp:" << to_string(mCurrentFrame.mTimeStamp) << std::endl;
                         //std::cout << "mTimeStampLost:" << to_string(mTimeStampLost) << std::endl;
@@ -2086,6 +2090,7 @@ void Tracking::Track()
                 }
                 else if (mState == LOST)
                 {
+                    cout << "LOSTTTTTT........................." << endl;
 
                     Verbose::PrintMess("A new map is started...", Verbose::VERBOSITY_NORMAL);
 
@@ -2198,7 +2203,6 @@ void Tracking::Track()
             if(bOK)
             {
                 bOK = TrackLocalMap();
-
             }
             if(!bOK)
                 cout << "Fail to track local map!" << endl;
@@ -2792,8 +2796,6 @@ void Tracking::CheckReplacedInLastFrame()
 
 bool Tracking::TrackReferenceKeyFrame()
 {
-    cout << " ----------- Tracking::TrackReferenceKeyFrame()" << endl;
-
     // Compute Bag of Words vector
     mCurrentFrame.ComputeBoW();
 
@@ -2811,13 +2813,15 @@ bool Tracking::TrackReferenceKeyFrame()
     }
 
     mCurrentFrame.mvpMapPoints = vpMapPointMatches;
-//    mCurrentFrame.SetPose(mLastFrame.GetPose());
+    if (!mbIsGroundTruth)
+        mCurrentFrame.SetPose(mLastFrame.GetPose());
 
     //mCurrentFrame.PrintPointDistribution();
 
 
     // cout << " TrackReferenceKeyFrame mLastFrame.mTcw:  " << mLastFrame.mTcw << endl;
-//    Optimizer::PoseOptimization(&mCurrentFrame);
+    if (!mbIsGroundTruth)
+        Optimizer::PoseOptimization(&mCurrentFrame);
 
     // Discard outliers
     int nmatchesMap = 0;
@@ -2940,10 +2944,11 @@ bool Tracking::TrackWithMotionModel()
         PredictStateIMU();
         return true;
     }
-//    else
-//    {
-//        mCurrentFrame.SetPose(mVelocity * mLastFrame.GetPose());
-//    }
+    else
+    {
+        if (!mbIsGroundTruth)
+            mCurrentFrame.SetPose(mVelocity * mLastFrame.GetPose());
+    }
 
 
 
@@ -2981,7 +2986,8 @@ bool Tracking::TrackWithMotionModel()
     }
 
     // Optimize frame pose with all matches
-//    Optimizer::PoseOptimization(&mCurrentFrame);
+    if (!mbIsGroundTruth)
+        Optimizer::PoseOptimization(&mCurrentFrame);
 
     // Discard outliers
     int nmatchesMap = 0;
@@ -3042,31 +3048,28 @@ bool Tracking::TrackLocalMap()
         }
 
     int inliers;
-//    if (!mpAtlas->isImuInitialized())
-//        Optimizer::PoseOptimization(&mCurrentFrame);
-//    else
-//    {
-//        if(mCurrentFrame.mnId<=mnLastRelocFrameId+mnFramesToResetIMU)
-//        {
-//            Verbose::PrintMess("TLM: PoseOptimization ", Verbose::VERBOSITY_DEBUG);
-//            Optimizer::PoseOptimization(&mCurrentFrame);
-//        }
-//        else
-//        {
-//            // if(!mbMapUpdated && mState == OK) //  && (mnMatchesInliers>30))
-//            if(!mbMapUpdated) //  && (mnMatchesInliers>30))
-//            {
-//                Verbose::PrintMess("TLM: PoseInertialOptimizationLastFrame ", Verbose::VERBOSITY_DEBUG);
-//                inliers = Optimizer::PoseInertialOptimizationLastFrame(&mCurrentFrame); // , !mpLastKeyFrame->GetMap()->GetIniertialBA1());
-//            }
-//            else
-//            {
-//                Verbose::PrintMess("TLM: PoseInertialOptimizationLastKeyFrame ", Verbose::VERBOSITY_DEBUG);
-//                inliers = Optimizer::PoseInertialOptimizationLastKeyFrame(&mCurrentFrame); // , !mpLastKeyFrame->GetMap()->GetIniertialBA1());
-//            }
-//        }
-//    }
-
+    if (!mbIsGroundTruth) {
+        if (!mpAtlas->isImuInitialized()) {
+            Optimizer::PoseOptimization(&mCurrentFrame);
+        } else {
+            if (mCurrentFrame.mnId <= mnLastRelocFrameId + mnFramesToResetIMU) {
+                Verbose::PrintMess("TLM: PoseOptimization ", Verbose::VERBOSITY_DEBUG);
+                Optimizer::PoseOptimization(&mCurrentFrame);
+            } else {
+                if (!mbMapUpdated && mState == OK) //  && (mnMatchesInliers>30))
+                    if (!mbMapUpdated) //  && (mnMatchesInliers>30))
+                    {
+                        Verbose::PrintMess("TLM: PoseInertialOptimizationLastFrame ", Verbose::VERBOSITY_DEBUG);
+                        inliers = Optimizer::PoseInertialOptimizationLastFrame(
+                                &mCurrentFrame); // , !mpLastKeyFrame->GetMap()->GetIniertialBA1());
+                    } else {
+                        Verbose::PrintMess("TLM: PoseInertialOptimizationLastKeyFrame ", Verbose::VERBOSITY_DEBUG);
+                        inliers = Optimizer::PoseInertialOptimizationLastKeyFrame(
+                                &mCurrentFrame); // , !mpLastKeyFrame->GetMap()->GetIniertialBA1());
+                    }
+            }
+        }
+    }
     aux1 = 0, aux2 = 0;
     for(int i=0; i<mCurrentFrame.N; i++)
         if( mCurrentFrame.mvpMapPoints[i])
@@ -4156,6 +4159,35 @@ void Tracking::SaveSubTrajectory(string strNameFile_frames, string strNameFile_k
 float Tracking::GetImageScale()
 {
     return mImageScale;
+}
+
+void Tracking::UpdateLocalMapPoints() {
+
+    Eigen::Matrix4f optimizedPose = mCurrentFrame.GetPose().matrix();
+    Eigen::Matrix4f gtPose = mTcw_gt.matrix();
+
+    for (auto pMP : mCurrentFrame.mvpMapPoints) {
+        if (pMP) {
+            Eigen::Vector4f p;
+            p(0, 0) = pMP->GetWorldPos()(0, 0);
+            p(1, 0) = pMP->GetWorldPos()(1, 0);
+            p(2, 0) = pMP->GetWorldPos()(2, 0);
+            p(3, 0) = 1.0f;
+
+            Eigen::Vector4f pOpt = optimizedPose * p;
+            Eigen::Vector4f pGT = gtPose * pOpt;
+
+            // i-i  i-n  n-i n-n
+
+            Eigen::Vector3f pGT3;
+            pGT3(0, 0) = pGT(0, 0);
+            pGT3(1, 0) = pGT(1, 0);
+            pGT3(2, 0) = pGT(2, 0);
+            pMP->SetWorldPos(pGT3);
+        }
+    }
+
+    mCurrentFrame.SetPose(mTcw_gt.inverse());
 }
 
 #ifdef REGISTER_LOOP

@@ -357,29 +357,24 @@ void LocalMapping::MapPointCulling()
     const int cnThObs = nThObs;
 
     int borrar = mlpRecentAddedMapPoints.size();
+    if (!mpTracker->mbIsGroundTruth) {
+        while (lit != mlpRecentAddedMapPoints.end()) {
+            MapPoint *pMP = *lit;
 
-    while(lit!=mlpRecentAddedMapPoints.end())
-    {
-        MapPoint* pMP = *lit;
-
-        if(pMP->isBad())
-            lit = mlpRecentAddedMapPoints.erase(lit);
-        else if(pMP->GetFoundRatio()<0.25f)
-        {
-            pMP->SetBadFlag();
-            lit = mlpRecentAddedMapPoints.erase(lit);
-        }
-        else if(((int)nCurrentKFid-(int)pMP->mnFirstKFid)>=2 && pMP->Observations()<=cnThObs)
-        {
-            pMP->SetBadFlag();
-            lit = mlpRecentAddedMapPoints.erase(lit);
-        }
-        else if(((int)nCurrentKFid-(int)pMP->mnFirstKFid)>=3)
-            lit = mlpRecentAddedMapPoints.erase(lit);
-        else
-        {
-            lit++;
-            borrar--;
+            if (pMP->isBad())
+                lit = mlpRecentAddedMapPoints.erase(lit);
+            else if (pMP->GetFoundRatio() < 0.25f) {
+                pMP->SetBadFlag();
+                lit = mlpRecentAddedMapPoints.erase(lit);
+            } else if (((int) nCurrentKFid - (int) pMP->mnFirstKFid) >= 2 && pMP->Observations() <= cnThObs) {
+                pMP->SetBadFlag();
+                lit = mlpRecentAddedMapPoints.erase(lit);
+            } else if (((int) nCurrentKFid - (int) pMP->mnFirstKFid) >= 3)
+                lit = mlpRecentAddedMapPoints.erase(lit);
+            else {
+                lit++;
+                borrar--;
+            }
         }
     }
 }

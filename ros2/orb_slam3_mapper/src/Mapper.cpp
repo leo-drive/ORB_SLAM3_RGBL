@@ -56,10 +56,10 @@ namespace mapper {
             visualizer(Tcw, pose);
 
 //             Activate localization mode.
-            if (localization_counter == 100) {
-                mSLAM.ActivateLocalizationMode();
-            }
-            localization_counter++;
+//            if (localization_counter == 100) {
+//                mSLAM.ActivateLocalizationMode();
+//            }
+//            localization_counter++;
         }
         mSLAM.SaveTrajectoryKITTI("KITTI.txt");
         RCLCPP_INFO(this->get_logger(), "SLAM Shutdown");

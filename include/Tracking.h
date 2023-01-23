@@ -143,6 +143,7 @@ public:
 
     // Current Ground Truth
     Sophus::SE3f mTcw_gt;
+    bool mbIsGroundTruth;
 
     cv::Mat mImGray;
     cv::Mat imDepth;
@@ -237,6 +238,8 @@ protected:
     void ResetFrameIMU();
 
     bool mbMapUpdated;
+
+    void UpdateLocalMapPoints();
 
     // Imu preintegration from last frame
     IMU::Preintegrated *mpImuPreintegratedFromLastKF;

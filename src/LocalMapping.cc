@@ -149,11 +149,12 @@ void LocalMapping::Run()
                         Optimizer::LocalInertialBA(mpCurrentKeyFrame, &mbAbortBA, mpCurrentKeyFrame->GetMap(),num_FixedKF_BA,num_OptKF_BA,num_MPs_BA,num_edges_BA, bLarge, !mpCurrentKeyFrame->GetMap()->GetIniertialBA2());
                         b_doneLBA = true;
                     }
-                    else
-                    {
-                        Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame,&mbAbortBA, mpCurrentKeyFrame->GetMap(),num_FixedKF_BA,num_OptKF_BA,num_MPs_BA,num_edges_BA);
-                        b_doneLBA = true;
-                    }
+                    // TODO: Coment in for GT (Fix)
+//                    else
+//                    {
+//                        Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame,&mbAbortBA, mpCurrentKeyFrame->GetMap(),num_FixedKF_BA,num_OptKF_BA,num_MPs_BA,num_edges_BA);
+//                        b_doneLBA = true;
+//                    }
 
                 }
 #ifdef REGISTER_TIMES
@@ -357,7 +358,6 @@ void LocalMapping::MapPointCulling()
     const int cnThObs = nThObs;
 
     int borrar = mlpRecentAddedMapPoints.size();
-    if (!mpTracker->mbIsGroundTruth) {
         while (lit != mlpRecentAddedMapPoints.end()) {
             MapPoint *pMP = *lit;
 
@@ -376,7 +376,6 @@ void LocalMapping::MapPointCulling()
                 borrar--;
             }
         }
-    }
 }
 
 

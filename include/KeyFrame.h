@@ -432,6 +432,8 @@ protected:
     Sophus::SE3<float> mTwc;
     Eigen::Matrix3f mRwc;
 
+    Sophus::SE3f mTcw_gt;
+
     // IMU position
     Eigen::Vector3f mOwb;
     // Velocity (Only used for inertial SLAM)
@@ -536,6 +538,12 @@ public:
         cout << "Point distribution in KeyFrame: left-> " << left << " --- right-> " << right << endl;
     }
 
+
+
+    void SetGroundTruthPose(Sophus::SE3f Tcw_gt);
+    Sophus::SE3f GetGroundTruthPose();
+
+    void UpdateLocalMapPoints();
 
 };
 

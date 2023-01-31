@@ -23,6 +23,22 @@ namespace mapper {
         mPosesMarkerPublisher = this->create_publisher<visualization_msgs::msg::MarkerArray>(
                 "/orb_slam3_mapper/poses_marker", 1);
 
+        mPublisher1 = this->create_publisher<sensor_msgs::msg::PointCloud2>("orb_slam3_mapper/point_cloud1", 10);
+        mPublisher2 = this->create_publisher<sensor_msgs::msg::PointCloud2>("orb_slam3_mapper/point_cloud2", 10);
+
+        mTransformBroadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+
+
+        tf_static_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
+
+        trans_.header.stamp = this->get_clock()->now();
+        trans_.header.frame_id = "map";
+        trans_.child_frame_id = "xyzi";
+        trans_.transform.rotation.set__w(1.0);
+        trans_.transform.translation.set__x(0.0);
+        trans_.transform.translation.set__y(0.0);
+        tf_static_broadcaster_->sendTransform(trans_);
+
         std::string dataset_path = mPathToSequence.c_str();
         LoadImages(dataset_path, mvstrImageFilenamesRGB, mvstrPcdFilenames, mvTimestamps);
         LoadGroundTruth(dataset_path, mvPosesGT);
@@ -42,7 +58,8 @@ namespace mapper {
 
             double tframe = mvTimestamps[ni];
 
-            Sophus::SE3f Tcw = mSLAM.TrackRGBL(imRGB, pcd, tframe, mvPosesGT[ni]);
+            Sophus::SE3f Tcw = mSLAM.TrackRGBL(imRGB, pcd, tframe);
+//            cout << "All MapPoints: " << mSLAM.GetAtlas()->GetAllMapPoints().size() << endl;
 
             // Add map points to map.
             auto pose = mvPosesGT[ni];
@@ -54,9 +71,9 @@ namespace mapper {
 
             // TODO: Visualize pangolin things with rviz.
             visualizer(Tcw, pose);
-
+            pointCloudVisualizer(pc2msg, mSLAM.GetCurrentMapPoints(), Tcw);
 //             Activate localization mode.
-//            if (localization_counter == 100) {
+//            if (localization_counter == 50) {
 //                mSLAM.ActivateLocalizationMode();
 //            }
 //            localization_counter++;
@@ -108,6 +125,10 @@ namespace mapper {
         // Clear Pointcloud variable
         point_cloud = cv::Mat::zeros(cv::Size(num, 4), CV_32F);
 
+        sensor_msgs::msg::PointCloud2 msg_cloud_xyzi;
+        CloudModifierXYZI modifier{ msg_cloud_xyzi, "xyzi" };
+        modifier.reserve(num);
+
         // Format data as desired
         for (int32_t i = 0; i < num; i++) {
             point_cloud.at<float>(0, i) = (float) *px;
@@ -115,11 +136,19 @@ namespace mapper {
             point_cloud.at<float>(2, i) = (float) *pz;
             point_cloud.at<float>(3, i) = (float) 1;
 
+            PointXYZI point;
+            point.x = *px;
+            point.y = *py;
+            point.z = *pz;
+            point.intensity = 0.5;
+            modifier.push_back(point);
+
             px += 4;
             py += 4;
             pz += 4;
             pr += 4;
         }
+        mPublisher1->publish(msg_cloud_xyzi);
 
         // Close Stream and Free Memory
         fclose(stream);
@@ -368,6 +397,62 @@ namespace mapper {
         mKeyFramesGTMarkerPublisher->publish(markerArrayGT);
 
         // Visualize all 3d points
+
+    }
+
+    void Mapper::pointCloudVisualizer(sensor_msgs::msg::PointCloud2 &point_cloud2, vector<ORB_SLAM3::MapPoint *> mapPoints, Sophus::SE3f curr_pose)
+    {
+        sensor_msgs::msg::PointCloud2 point_cloud;
+
+        sensor_msgs::msg::PointCloud2 msg_cloud_xyzi;
+        CloudModifierXYZI modifier{ msg_cloud_xyzi, "xyzi" };
+        modifier.reserve(1000000);
+
+        Eigen::Matrix4f lidar_to_camera = Eigen::Matrix4f::Identity();
+        lidar_to_camera(0, 0) = 4.276802385584e-04;
+        lidar_to_camera(0, 1) = -9.999672484946e-01;
+        lidar_to_camera(0, 2) = -8.084491683471e-03;
+        lidar_to_camera(0, 3) = -1.198459927713e-02;
+        lidar_to_camera(1, 0) = -7.210626507497e-03;
+        lidar_to_camera(1, 1) = 8.081198471645e-03;
+        lidar_to_camera(1, 2) = -9.999413164504e-01;
+        lidar_to_camera(1, 3) = -5.403984729748e-02;
+        lidar_to_camera(2, 0) = 9.999738645903e-01;
+        lidar_to_camera(2, 1) = 4.859485810390e-04;
+        lidar_to_camera(2, 2) = -7.206933692422e-03;
+        lidar_to_camera(2, 3) = -2.921968648686e-01;
+        lidar_to_camera = lidar_to_camera.inverse();
+
+        Eigen::Matrix4f pose = curr_pose.matrix();
+        for (auto pMP : mapPoints) {
+            if (pMP)
+            {
+                Eigen::Vector4f p;
+                p(0, 0) = pMP->GetWorldPos()(0, 0);
+                p(1, 0) = pMP->GetWorldPos()(1, 0);
+                p(2, 0) = pMP->GetWorldPos()(2, 0);
+                p(3, 0) = 1.0f;
+
+                Eigen::Vector4f p2 = pose * p;
+                Eigen::Vector4f p3 = lidar_to_camera * p2;
+
+                PointXYZI point;
+                point.x = p3(0, 0);
+                point.y = p3(1, 0);
+                point.z = p3(2, 0);
+                point.intensity = 1.0;
+                modifier.push_back(point);
+
+//                PointXYZI point;
+//                point.x = pMP->GetWorldPos()(0, 0);
+//                point.y = pMP->GetWorldPos()(1, 0);
+//                point.z = pMP->GetWorldPos()(2, 0);
+//                point.intensity = 1.0;
+//                modifier.push_back(point);
+            }
+        }
+        if (msg_cloud_xyzi.width != 0)
+            mPublisher2->publish(msg_cloud_xyzi);
 
     }
 

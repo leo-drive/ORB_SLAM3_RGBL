@@ -1494,6 +1494,13 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
         pMP->UpdateNormalAndDepth();
     }
 
+    // TODO: Burası iyi sonuç vermiyor !!
+//    for(list<KeyFrame*>::iterator lit=lLocalKeyFrames.begin(), lend=lLocalKeyFrames.end(); lit!=lend; lit++)
+//    {
+//        KeyFrame* pKFi = *lit;
+//        pKFi->UpdateLocalMapPoints();
+//    }
+
     pMap->IncreaseChangeIndex();
 }
 

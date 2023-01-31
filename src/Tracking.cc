@@ -46,7 +46,8 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
     mbOnlyTracking(false), mbMapUpdated(false), mbVO(false), mpORBVocabulary(pVoc), mpKeyFrameDB(pKFDB),
     mbReadyToInitializate(false), mpSystem(pSys), mpViewer(NULL), bStepByStep(false),
     mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer), mpAtlas(pAtlas), mnLastRelocFrameId(0), time_recently_lost(5.0),
-    mnInitialFrameId(0), mbCreatedMap(false), mnFirstFrameId(0), mpCamera2(nullptr), mpLastKeyFrame(static_cast<KeyFrame*>(NULL))
+    mnInitialFrameId(0), mbCreatedMap(false), mnFirstFrameId(0), mpCamera2(nullptr), mpLastKeyFrame(static_cast<KeyFrame*>(NULL)),
+    mbIsGroundTruth(false)
 {
     // Load camera parameters from settings file
     if(settings){
@@ -1564,6 +1565,8 @@ Sophus::SE3f Tracking::GrabImageRGBL(const cv::Mat &imRGB,const cv::Mat& PointCl
     {
         mImGray = imRGB;
 
+        mbIsGroundTruth = false;
+
         if(mImGray.channels()==3)
         {
             if(mbRGB)
@@ -2448,6 +2451,7 @@ void Tracking::StereoInitialization()
 
         // Create KeyFrame
         KeyFrame* pKFini = new KeyFrame(mCurrentFrame,mpAtlas->GetCurrentMap(),mpKeyFrameDB);
+        pKFini->SetGroundTruthPose(mTcw_gt);
 
         // Insert KeyFrame in the map
         mpAtlas->AddKeyFrame(pKFini);
@@ -2813,15 +2817,25 @@ bool Tracking::TrackReferenceKeyFrame()
     }
 
     mCurrentFrame.mvpMapPoints = vpMapPointMatches;
-    if (!mbIsGroundTruth)
+
+    if (mbIsGroundTruth)
+    {
+        mCurrentFrame.SetPose(mTcw_gt.inverse());
+    }
+    else
+    {
         mCurrentFrame.SetPose(mLastFrame.GetPose());
+    }
 
     //mCurrentFrame.PrintPointDistribution();
 
 
     // cout << " TrackReferenceKeyFrame mLastFrame.mTcw:  " << mLastFrame.mTcw << endl;
-    if (!mbIsGroundTruth)
-        Optimizer::PoseOptimization(&mCurrentFrame);
+    Optimizer::PoseOptimization(&mCurrentFrame);
+    if (mbIsGroundTruth)
+    {
+        UpdateLocalMapPoints();
+    }
 
     // Discard outliers
     int nmatchesMap = 0;
@@ -2946,8 +2960,14 @@ bool Tracking::TrackWithMotionModel()
     }
     else
     {
-        if (!mbIsGroundTruth)
+        if (mbIsGroundTruth)
+        {
+            mCurrentFrame.SetPose(mTcw_gt.inverse());
+        }
+        else
+        {
             mCurrentFrame.SetPose(mVelocity * mLastFrame.GetPose());
+        }
     }
 
 
@@ -2986,8 +3006,11 @@ bool Tracking::TrackWithMotionModel()
     }
 
     // Optimize frame pose with all matches
-    if (!mbIsGroundTruth)
-        Optimizer::PoseOptimization(&mCurrentFrame);
+    Optimizer::PoseOptimization(&mCurrentFrame);
+    if (mbIsGroundTruth)
+    {
+        UpdateLocalMapPoints();
+    }
 
     // Discard outliers
     int nmatchesMap = 0;
@@ -3048,9 +3071,12 @@ bool Tracking::TrackLocalMap()
         }
 
     int inliers;
-    if (!mbIsGroundTruth) {
         if (!mpAtlas->isImuInitialized()) {
             Optimizer::PoseOptimization(&mCurrentFrame);
+            if (mbIsGroundTruth)
+            {
+                UpdateLocalPoints();
+            }
         } else {
             if (mCurrentFrame.mnId <= mnLastRelocFrameId + mnFramesToResetIMU) {
                 Verbose::PrintMess("TLM: PoseOptimization ", Verbose::VERBOSITY_DEBUG);
@@ -3069,7 +3095,7 @@ bool Tracking::TrackLocalMap()
                     }
             }
         }
-    }
+
     aux1 = 0, aux2 = 0;
     for(int i=0; i<mCurrentFrame.N; i++)
         if( mCurrentFrame.mvpMapPoints[i])
@@ -3300,6 +3326,7 @@ void Tracking::CreateNewKeyFrame()
         return;
 
     KeyFrame* pKF = new KeyFrame(mCurrentFrame,mpAtlas->GetCurrentMap(),mpKeyFrameDB);
+    pKF->SetGroundTruthPose(mTcw_gt);
 
     if(mpAtlas->isImuInitialized()) //  || mpLocalMapper->IsInitializing())
         pKF->bImu = true;
@@ -4176,8 +4203,6 @@ void Tracking::UpdateLocalMapPoints() {
 
             Eigen::Vector4f pOpt = optimizedPose * p;
             Eigen::Vector4f pGT = gtPose * pOpt;
-
-            // i-i  i-n  n-i n-n
 
             Eigen::Vector3f pGT3;
             pGT3(0, 0) = pGT(0, 0);

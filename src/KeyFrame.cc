@@ -1156,4 +1156,42 @@ void KeyFrame::SetKeyFrameDatabase(KeyFrameDatabase* pKFDB)
     mpKeyFrameDB = pKFDB;
 }
 
+void KeyFrame::SetGroundTruthPose(Sophus::SE3f Tcw_gt)
+{
+    unique_lock<mutex> lock(mMutexPose);
+    mTcw_gt = Tcw_gt;
+}
+
+Sophus::SE3f KeyFrame::GetGroundTruthPose() {
+    unique_lock<mutex> lock(mMutexPose);
+    return mTcw_gt;
+}
+
+void KeyFrame::UpdateLocalMapPoints() {
+
+    Eigen::Matrix4f optimizedPose = GetPose().matrix();
+    Eigen::Matrix4f gtPose = GetGroundTruthPose().matrix();
+
+    for (auto pMP: mvpMapPoints) {
+        if (pMP) {
+            Eigen::Vector4f p;
+            p(0, 0) = pMP->GetWorldPos()(0, 0);
+            p(1, 0) = pMP->GetWorldPos()(1, 0);
+            p(2, 0) = pMP->GetWorldPos()(2, 0);
+            p(3, 0) = 1.0f;
+
+            Eigen::Vector4f pOpt = optimizedPose * p;
+            Eigen::Vector4f pGT = gtPose * pOpt;
+
+            Eigen::Vector3f pGT3;
+            pGT3(0, 0) = pGT(0, 0);
+            pGT3(1, 0) = pGT(1, 0);
+            pGT3(2, 0) = pGT(2, 0);
+            pMP->SetWorldPos(pGT3);
+        }
+    }
+
+    SetPose(mTcw_gt.inverse());
+}
+
 } //namespace ORB_SLAM

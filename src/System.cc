@@ -1755,5 +1755,9 @@ Atlas* System::GetAtlas() {
     return mpAtlas;
 }
 
+vector<MapPoint *> System::GetCurrentMapPoints() {
+    return mpTracker->mCurrentFrame.mvpMapPoints;
+}
+
 } //namespace ORB_SLAM
 

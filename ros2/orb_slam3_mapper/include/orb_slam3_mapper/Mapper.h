@@ -43,8 +43,33 @@ typedef pcl::PointXYZI PointT;
 
 namespace mapper {
 
+    template<typename T>
+    bool rel_eq(const T &a, const T &b) {
+        static_assert(
+                std::is_floating_point<T>::value, "Float comparisons only support floating point types.");
+
+        const auto delta = std::abs(a - b);
+        const auto larger = std::max(std::abs(a), std::abs(b));
+        const auto max_rel_delta = (larger * std::numeric_limits<T>::epsilon());
+        return delta <= max_rel_delta;
+    }
+
     class Mapper : public rclcpp::Node {
     public:
+        struct PointXYZI {
+            float x;
+            float y;
+            float z;
+            float intensity;
+
+            friend bool operator==(const PointXYZI &p1, const PointXYZI &p2) noexcept {
+                return rel_eq(p1.x, p2.x) && rel_eq(p1.y, p2.y) && rel_eq(p1.z, p2.z) &&
+                       rel_eq(p1.intensity, p2.intensity);
+            }
+        };
+
+        using CloudModifierXYZI = point_cloud_msg_wrapper::PointCloud2Modifier<PointXYZI>;
+
         Mapper(int argc, char **argv);
 
         ~Mapper();
@@ -65,11 +90,16 @@ namespace mapper {
 
         void visualizer(const Sophus::SE3f &Tcw, Sophus::SE3f &poseGT);
 
+        void pointCloudVisualizer(sensor_msgs::msg::PointCloud2 &point_cloud2, vector<ORB_SLAM3::MapPoint *> mapPoints, Sophus::SE3f curr_pose);
+
     private:
         rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr mCurrCameraMarkerPublisher{};
         rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr mKeyFramesMarkerPublisher{};
         rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr mKeyFramesGTMarkerPublisher{};
         rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr mPosesMarkerPublisher{};
+
+        rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr mPublisher1{};
+        rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr mPublisher2{};
 
         ORB_SLAM3::System mSLAM;
 
@@ -87,6 +117,11 @@ namespace mapper {
         // Visualizer
         vector<Sophus::SE3f> mvKeyFrames;
         vector<Sophus::SE3f> mvKeyFramesGT;
+
+        std::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_static_broadcaster_;
+        geometry_msgs::msg::TransformStamped trans_;
+
+        std::unique_ptr<tf2_ros::TransformBroadcaster> mTransformBroadcaster;
     };
 
 }

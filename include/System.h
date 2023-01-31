@@ -206,6 +206,8 @@ public:
 
     Atlas* GetAtlas();
 
+    vector<MapPoint *> GetCurrentMapPoints();
+
 #ifdef REGISTER_TIMES
     void InsertRectTime(double& time);
     void InsertResizeTime(double& time);

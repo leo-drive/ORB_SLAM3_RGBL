@@ -50,6 +50,8 @@ namespace mapper {
 
         int localization_counter = 0;
 
+        vector<Sophus::SE3f> poses;
+
         cv::Mat imRGB, pcd;
         sensor_msgs::msg::PointCloud2 pc2msg;
         for (int ni = 0; ni < mvstrImageFilenamesRGB.size(); ni++) {
@@ -58,7 +60,8 @@ namespace mapper {
 
             double tframe = mvTimestamps[ni];
 
-            Sophus::SE3f Tcw = mSLAM.TrackRGBL(imRGB, pcd, tframe);
+            Sophus::SE3f Tcw = mSLAM.TrackRGBL(imRGB, pcd, tframe, mvPosesGT[ni]);
+            poses.push_back(Tcw);
 //            cout << "All MapPoints: " << mSLAM.GetAtlas()->GetAllMapPoints().size() << endl;
 
             // Add map points to map.
@@ -78,7 +81,15 @@ namespace mapper {
 //            }
 //            localization_counter++;
         }
-        mSLAM.SaveTrajectoryKITTI("KITTI.txt");
+
+        // write poses to file
+        std::ofstream f;
+        f.open("LastPoses.txt");
+        for (auto pose : poses) {
+            Eigen::Matrix4f m = pose.matrix().inverse();
+            f << m(0,0) << " " << m(0,1) << " " << m(0,2) << " " << m(0,3) << " " << m(1, 0) << " " << m(1, 1) << " " << m(1, 2) << " " << m(1, 3) << " " << m(2, 0) << " " << m(2, 1) << " " << m(2, 2) << " " << m(2, 3) << std::endl;
+        }
+
         RCLCPP_INFO(this->get_logger(), "SLAM Shutdown");
 
         auto map_points = mSLAM.GetTrackedMapPoints();
@@ -87,6 +98,7 @@ namespace mapper {
         pcl::io::savePCDFileASCII("deneme.pcd", *mMap);
 
         mSLAM.Shutdown();
+        mSLAM.SaveTrajectoryKITTI("KITTI.txt");
     }
 
     Mapper::~Mapper() {
@@ -319,9 +331,9 @@ namespace mapper {
             marker.id = i;
             marker.pose = pose;
             marker.color = color;
-            marker.scale.x = 0.5;
-            marker.scale.y = 0.5;
-            marker.scale.z = 0.5;
+            marker.scale.x = 0.4;
+            marker.scale.y = 0.4;
+            marker.scale.z = 0.4;
             markerArrayPoses.markers.push_back(marker);
         }
         mPosesMarkerPublisher->publish(markerArrayPoses);
@@ -355,9 +367,9 @@ namespace mapper {
             marker.id = i;
             marker.pose = pose;
             marker.color = color;
-            marker.scale.x = 1.0;
-            marker.scale.y = 1.0;
-            marker.scale.z = 1.0;
+            marker.scale.x = 0.4;
+            marker.scale.y = 0.4;
+            marker.scale.z = 0.4;
             markerArray.markers.push_back(marker);
         }
         mKeyFramesMarkerPublisher->publish(markerArray);
@@ -389,9 +401,9 @@ namespace mapper {
             marker.id = i;
             marker.pose = pose;
             marker.color = color;
-            marker.scale.x = 1.0;
-            marker.scale.y = 1.0;
-            marker.scale.z = 1.0;
+            marker.scale.x = 0.4;
+            marker.scale.y = 0.4;
+            marker.scale.z = 0.4;
             markerArrayGT.markers.push_back(marker);
         }
         mKeyFramesGTMarkerPublisher->publish(markerArrayGT);

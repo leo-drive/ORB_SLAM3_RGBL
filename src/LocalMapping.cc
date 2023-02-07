@@ -33,7 +33,7 @@ namespace ORB_SLAM3
 LocalMapping::LocalMapping(System* pSys, Atlas *pAtlas, const float bMonocular, bool bInertial, const string &_strSeqName):
     mpSystem(pSys), mbMonocular(bMonocular), mbInertial(bInertial), mbResetRequested(false), mbResetRequestedActiveMap(false), mbFinishRequested(false), mbFinished(true), mpAtlas(pAtlas), bInitializing(false),
     mbAbortBA(false), mbStopped(false), mbStopRequested(false), mbNotStop(false), mbAcceptKeyFrames(true),
-    mIdxInit(0), mScale(1.0), mInitSect(0), mbNotBA1(true), mbNotBA2(true), mIdxIteration(0), infoInertial(Eigen::MatrixXd::Zero(9,9))
+    mIdxInit(0), mScale(1.0), mInitSect(0), mbNotBA1(true), mbNotBA2(true), mIdxIteration(0), infoInertial(Eigen::MatrixXd::Zero(9,9)), mbIsGroundTruth(false)
 {
     mnMatchesInliers = 0;
 
@@ -150,11 +150,15 @@ void LocalMapping::Run()
                         b_doneLBA = true;
                     }
                     // TODO: Coment in for GT (Fix)
-//                    else
-//                    {
-//                        Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame,&mbAbortBA, mpCurrentKeyFrame->GetMap(),num_FixedKF_BA,num_OptKF_BA,num_MPs_BA,num_edges_BA);
-//                        b_doneLBA = true;
-//                    }
+                    else
+                    {
+                        if (!mbIsGroundTruth) {
+                            cout << "Burda" << endl;
+                            Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame, &mbAbortBA, mpCurrentKeyFrame->GetMap(),
+                                                             num_FixedKF_BA, num_OptKF_BA, num_MPs_BA, num_edges_BA);
+                            b_doneLBA = true;
+                        }
+                    }
 
                 }
 #ifdef REGISTER_TIMES

@@ -1566,6 +1566,7 @@ Sophus::SE3f Tracking::GrabImageRGBL(const cv::Mat &imRGB,const cv::Mat& PointCl
         mImGray = imRGB;
 
         mbIsGroundTruth = false;
+        mpLocalMapper->mbIsGroundTruth = false;
 
         if(mImGray.channels()==3)
         {
@@ -1603,6 +1604,7 @@ Sophus::SE3f Tracking::GrabImageRGBL(const cv::Mat &imRGB,const cv::Mat& PointCl
 {
     mTcw_gt = PoseGT;
     mbIsGroundTruth = true;
+    mpLocalMapper->mbIsGroundTruth = true;
 
     mImGray = imRGB;
 
@@ -3075,7 +3077,7 @@ bool Tracking::TrackLocalMap()
             Optimizer::PoseOptimization(&mCurrentFrame);
             if (mbIsGroundTruth)
             {
-                UpdateLocalPoints();
+                UpdateLocalMapPoints();
             }
         } else {
             if (mCurrentFrame.mnId <= mnLastRelocFrameId + mnFramesToResetIMU) {

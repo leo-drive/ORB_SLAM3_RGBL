@@ -220,6 +220,8 @@ void LoopClosing::Run()
 
                 }
 
+                // TODO: it cause bad results mapping and localization both
+                mbLoopDetected = false;
                 if(mbLoopDetected)
                 {
                     bool bGoodLoop = true;

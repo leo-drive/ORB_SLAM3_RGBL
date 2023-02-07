@@ -111,6 +111,8 @@ public:
     bool mbFarPoints;
     float mThFarPoints;
 
+    bool mbIsGroundTruth;
+
 #ifdef REGISTER_TIMES
     vector<double> vdKFInsert_ms;
     vector<double> vdMPCulling_ms;

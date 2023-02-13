@@ -58,24 +58,27 @@ void DepthModule::CalculateDepthFromPcd(std::vector<cv::KeyPoint> mvKeys, std::v
     ProjectPointcloudToImage (PointCloud, imwidth, imheight, opt_min_dist, opt_max_dist);
 
     // Upsampling
-    if (SelectedUpsamlingMethod != DepthModule::None){
-        switch (SelectedUpsamlingMethod){
-            case DepthModule::NearestNeighborPixel:
-                Upsample_NearestNeighbor_Pixel(mvKeys, mvKeysUn);
-                break;
-            case DepthModule::AverageFiltering:
-                Upsample_AverageFiltering();
-                DepthModule::GetFeatureDepthFromDepthMap(mvKeys, mvKeysUn);
-                break;
-            case DepthModule::InverseDilation:
-                Upsample_InverseDilation();
-                DepthModule::GetFeatureDepthFromDepthMap(mvKeys, mvKeysUn);
-                break;
-            default:
-                std::cout << "*Desired Upsampling Method was not yet implemented.*";
-                break;
-        }
+    switch (SelectedUpsamlingMethod) {
+        case DepthModule::None:
+            ProcessedDepthMap = RawDepthMap;
+            DepthModule::GetFeatureDepthFromDepthMap(mvKeys, mvKeysUn);
+            break;
+        case DepthModule::NearestNeighborPixel:
+            Upsample_NearestNeighbor_Pixel(mvKeys, mvKeysUn);
+            break;
+        case DepthModule::AverageFiltering:
+            Upsample_AverageFiltering();
+            DepthModule::GetFeatureDepthFromDepthMap(mvKeys, mvKeysUn);
+            break;
+        case DepthModule::InverseDilation:
+            Upsample_InverseDilation();
+            DepthModule::GetFeatureDepthFromDepthMap(mvKeys, mvKeysUn);
+            break;
+        default:
+            std::cout << "*Desired Upsampling Method was not yet implemented.*";
+            break;
     }
+
 }
 
 // Test: Function from Frame

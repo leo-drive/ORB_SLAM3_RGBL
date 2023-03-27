@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<package format="2">
+    <name>data_preparation_tool</name>
+    <version>0.0.0</version>
+    <description>TODO: Package description</description>
+    <maintainer email="bzeren1819@gmail.com">bzeren</maintainer>
+    <license>TODO: License declaration</license>
+
+    <buildtool_depend>ament_cmake</buildtool_depend>
+
+    <depend>ament_index_cpp</depend>
+    <depend>pluginlib</depend>
+    <depend>rclcpp</depend>
+    <depend>rcutils</depend>
+    <depend>rcpputils</depend>
+    <depend>rmw</depend>
+    <depend>rmw_implementation</depend>
+    <depend>rosbag2_storage</depend>
+    <depend>rosidl_runtime_c</depend>
+    <depend>rosidl_runtime_cpp</depend>
+    <depend>rosidl_typesupport_cpp</depend>
+    <depend>rosidl_typesupport_introspection_cpp</depend>
+    <depend>shared_queues_vendor</depend>
+
+    <test_depend>rosbag2_storage_default_plugins</test_depend>
+    <test_depend>ament_cmake_gmock</test_depend>
+    <test_depend>ament_lint_auto</test_depend>
+    <test_depend>ament_lint_common</test_depend>
+    <test_depend>test_msgs</test_depend>
+    <test_depend>rosbag2_test_common</test_depend>
+
+    <export>
+        <build_type>ament_cmake</build_type>
+    </export>
+</package>

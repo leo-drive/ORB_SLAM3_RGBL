@@ -2,10 +2,11 @@
 // Created by bzeren on 27.03.2023.
 //
 
-#ifndef DATA_PREPARATION_TOOL_BAGREADER_H
-#define DATA_PREPARATION_TOOL_BAGREADER_H
+#ifndef ORB_SLAM3_RGBL_DATA_PREPARATION_TOOL_H
+#define ORB_SLAM3_RGBL_DATA_PREPARATION_TOOL_H
 
 #include <iostream>
+#include <utility>
 
 #include "rclcpp/rclcpp.hpp"
 
@@ -16,6 +17,22 @@
 #include "sensor_msgs/msg/point_cloud2.hpp"
 
 #include "applanix_msgs/msg/navigation_solution_gsof49.hpp"
+
+#include "cv_bridge/cv_bridge.h"
+
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/opencv.hpp>
+
+#include <pcl/io/pcd_io.h>
+#include <pcl/point_types.h>
+#include <pcl/conversions.h>
+#include <pcl/common/transforms.h>
+
+#include <pcl_conversions/pcl_conversions.h>
+
+#include <GeographicLib/Geocentric.hpp>
+#include <GeographicLib/LocalCartesian.hpp>
+#include <GeographicLib/UTMUPS.hpp>
 
 #include "rclcpp/serialization.hpp"
 #include "rclcpp/serialized_message.hpp"
@@ -53,14 +70,50 @@ struct GnssData {
     bool is_used;
 };
 
-class BagReader : public rclcpp::Node {
+class DataPreparationTool : public rclcpp::Node {
 public:
-    BagReader();
+    DataPreparationTool();
 
+    void readParameters();
+
+private:
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr m_point_cloud_publisher;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr m_image_publisher;
-private:
-
 };
 
-#endif //DATA_PREPARATION_TOOL_BAGREADER_H
+class BagReader {
+public:
+    BagReader(std::string bag_path, std::string dataset_path);
+
+    void parseBag(const std::string &bag_path);
+
+    void saveData(const ImageData &image_data, const PointCloudData &point_cloud_data, const GnssData &gnss_data);
+
+    template<typename T>
+    inline T deg_to_rad(T deg)
+    {
+        constexpr double multiplier = M_PI / 180.0;
+        return static_cast<T>(deg * multiplier);
+    }
+
+private:
+    int m_name_counter;
+
+    std::string m_bag_path;
+    std::string m_dataset_path;
+
+    cv::Mat m_camera_matrix;
+    cv::Mat m_distortion_coefficients;
+
+    std::ofstream m_gnss_file;
+    std::ofstream m_timestamp_file;
+
+    long m_first_timestamp;
+
+    bool m_is_first_gnss;
+
+    GeographicLib::Geocentric m_local_earth;
+    GeographicLib::LocalCartesian m_local_origin;
+};
+
+#endif //ORB_SLAM3_RGBL_DATA_PREPARATION_TOOL_H

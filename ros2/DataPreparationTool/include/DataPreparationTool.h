@@ -15,6 +15,10 @@
 
 #include "sensor_msgs/msg/image.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
+#include "sensor_msgs/point_cloud2_iterator.hpp"
+
+#include <geometry_msgs/msg/pose_array.hpp>
+#include <geometry_msgs/msg/pose.hpp>
 
 #include "applanix_msgs/msg/navigation_solution_gsof49.hpp"
 
@@ -49,6 +53,16 @@
 #include "rosbag2_storage/storage_options.hpp"
 #include "rosbag2_storage/topic_metadata.hpp"
 
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include "tf2_ros/static_transform_broadcaster.h"
+#include "tf2_ros/transform_broadcaster.h"
+#include <tf2_eigen/tf2_eigen.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Matrix3x3.h>
+#include <tf2/LinearMath/Transform.h>
+#include <tf2/transform_datatypes.h>
+#include <tf2/convert.h>
+
 struct ImageData {
     rcutils_time_point_value_t timestamp;
     std::string topic_name;
@@ -77,17 +91,24 @@ public:
     void readParameters();
 
 private:
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr m_point_cloud_publisher;
-    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr m_image_publisher;
+
 };
 
-class BagReader {
+class BagReader : public rclcpp::Node {
 public:
     BagReader(std::string bag_path, std::string dataset_path);
 
+    void createMatrices();
+
     void parseBag(const std::string &bag_path);
 
-    void saveData(const ImageData &image_data, const PointCloudData &point_cloud_data, const GnssData &gnss_data);
+    void saveData(ImageData image_data, PointCloudData point_cloud_data, const GnssData &gnss_data);
+
+    void visualizer(ImageData image_data, PointCloudData &point_cloud_data, const GnssData &gnss_data);
+
+    void tf_publisher();
+
+    Eigen::Matrix4d calculate_gnss(const GnssData &gnss_data);
 
     template<typename T>
     inline T deg_to_rad(T deg)
@@ -97,6 +118,16 @@ public:
     }
 
 private:
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr m_point_cloud_publisher;
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr m_image_publisher;
+    rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr m_pose_array_publisher;
+
+    geometry_msgs::msg::PoseArray m_pose_array;
+
+    std::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_static_broadcaster_;
+    geometry_msgs::msg::TransformStamped trans_;
+    std::unique_ptr<tf2_ros::TransformBroadcaster> mTransformBroadcaster;
+
     int m_name_counter;
 
     std::string m_bag_path;
@@ -114,6 +145,11 @@ private:
 
     GeographicLib::Geocentric m_local_earth;
     GeographicLib::LocalCartesian m_local_origin;
+
+    GnssData m_first_gnss_data;
+
+    Eigen::Matrix4d mLidarToCamera;
+    Eigen::Matrix4d mProjectionMatrix;
 };
 
 #endif //ORB_SLAM3_RGBL_DATA_PREPARATION_TOOL_H

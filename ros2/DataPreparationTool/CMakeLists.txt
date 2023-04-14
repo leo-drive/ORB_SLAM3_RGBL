@@ -26,6 +26,10 @@ find_package(rosidl_runtime_c REQUIRED)
 find_package(rosidl_runtime_cpp REQUIRED)
 find_package(rosidl_typesupport_cpp REQUIRED)
 find_package(rosidl_typesupport_introspection_cpp REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_eigen REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 
 include_directories(
         include
@@ -64,6 +68,10 @@ ament_target_dependencies(data_preparation_tool
         rosidl_runtime_cpp
         rosidl_typesupport_cpp
         rosidl_typesupport_introspection_cpp
+        tf2
+        tf2_ros
+        tf2_eigen
+        tf2_geometry_msgs
         )
 
 install(TARGETS data_preparation_tool

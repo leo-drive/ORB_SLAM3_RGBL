@@ -29,11 +29,14 @@ BagReader::BagReader(std::string bag_path, std::string dataset_path) : Node("dat
     m_point_cloud_publisher = this->create_publisher<sensor_msgs::msg::PointCloud2>("point_cloud", 10);
     m_image_publisher = this->create_publisher<sensor_msgs::msg::Image>("image", 10);
     m_pose_array_publisher = this->create_publisher<geometry_msgs::msg::PoseArray>("pose_array", 10);
-
-    mTransformBroadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
-
+    m_camera_info_publisher = this->create_publisher<sensor_msgs::msg::CameraInfo>("camera_info", 10);
 
     tf_static_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
+
+    tf_buffer_ =
+            std::make_unique<tf2_ros::Buffer>(this->get_clock());
+    tf_listener_ =
+            std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
 //    trans_.header.stamp = this->get_clock()->now();
 //    trans_.header.frame_id = "map";
@@ -190,11 +193,12 @@ void BagReader::saveData(ImageData image_data, PointCloudData point_cloud_data, 
 
     // save gnss data
 
-    Eigen::Matrix4d gnss_pose = calculate_gnss(gnss_data);
+    Eigen::Matrix4d gnss_pose = visualizer(image_data, point_cloud_data, gnss_data);
 
     m_gnss_file << gnss_pose(0, 0) << " " << gnss_pose(0, 1) << " " << gnss_pose(0, 2) << " " << gnss_pose(0, 3) << " "
                 << gnss_pose(1, 0) << " " << gnss_pose(1, 1) << " " << gnss_pose(1, 2) << " " << gnss_pose(1, 3) << " "
-                << gnss_pose(2, 0) << " " << gnss_pose(2, 1) << " " << gnss_pose(2, 2) << " " << gnss_pose(2, 3) << std::endl;
+                << gnss_pose(2, 0) << " " << gnss_pose(2, 1) << " " << gnss_pose(2, 2) << " " << gnss_pose(2, 3)
+                << std::endl;
 
     // calculate time as second from start
     double time = (gnss_data.timestamp - m_first_timestamp) / 1000000000.0;
@@ -202,6 +206,177 @@ void BagReader::saveData(ImageData image_data, PointCloudData point_cloud_data, 
 
     m_name_counter++;
 }
+
+//void BagReader::visualizer(ImageData image_data, PointCloudData &point_cloud_data, const GnssData &gnss_data) {
+//
+//    cv_bridge::CvImagePtr cv_ptr;
+//    try {
+//        cv_ptr = cv_bridge::toCvCopy(image_data.data, sensor_msgs::image_encodings::BGR8);
+//    } catch (cv_bridge::Exception &e) {
+//        std::cout << "cv_bridge error: " << e.what() << std::endl;
+//        return;
+//    }
+//    sensor_msgs::msg::Image image_msg;
+//    image_msg = *cv_ptr->toImageMsg();
+//    m_image_publisher->publish(image_msg);
+//
+//    sensor_msgs::msg::CameraInfo camera_info_msg;
+//    camera_info_msg.header.stamp = rclcpp::Clock().now();
+//    camera_info_msg.header.frame_id = "pylon_camra_link";
+//    camera_info_msg.height = 1080;
+//    camera_info_msg.width = 1440;
+//    camera_info_msg.distortion_model = "plumb_bob";
+//    camera_info_msg.d = {-0.345800, 0.121396, -0.000666, -0.000996, 0.000000};
+//    camera_info_msg.k = {1051.301058, 0.000000, 746.065934, 0.000000, 1057.779841, 555.827273, 0.000000, 0.000000, 1.000000};
+//    camera_info_msg.r = {1.000000, 0.000000, 0.000000, 0.000000, 1.000000, 0.000000, 0.000000, 0.000000, 1.000000};
+//    camera_info_msg.p = {869.72522, 0., 673.35093, 0., 0., 959.5163 , 529.28741, 0., 0.     ,   0.     ,   1.     ,   0.};
+//    m_camera_info_publisher->publish(camera_info_msg);
+//
+//    double x;
+//    double y;
+//    double z;
+//    m_local_origin.Forward(gnss_data.data.lla.latitude, gnss_data.data.lla.longitude, gnss_data.data.lla.altitude, x, y,
+//                           z);
+//
+//    // ENU to NED
+//    Eigen::Quaterniond q_ned_to_enu;
+//    q_ned_to_enu = Eigen::AngleAxisd(deg_to_rad<double>(180), Eigen::Vector3d::UnitX()) *
+//                   Eigen::AngleAxisd(deg_to_rad<double>(0), Eigen::Vector3d::UnitY()) *
+//                   Eigen::AngleAxisd(deg_to_rad<double>(-90), Eigen::Vector3d::UnitZ());
+//
+//    geometry_msgs::msg::TransformStamped t_ned_to_enu;
+//    t_ned_to_enu.header.stamp = rclcpp::Clock().now();
+//    t_ned_to_enu.header.frame_id = "ned-gnss";
+//    t_ned_to_enu.child_frame_id = "enu-gnss";
+//    t_ned_to_enu.transform.translation.x = 0;
+//    t_ned_to_enu.transform.translation.y = 0;
+//    t_ned_to_enu.transform.translation.z = 0;
+//    t_ned_to_enu.transform.rotation.x = q_ned_to_enu.x();
+//    t_ned_to_enu.transform.rotation.y = q_ned_to_enu.y();
+//    t_ned_to_enu.transform.rotation.z = q_ned_to_enu.z();
+//    t_ned_to_enu.transform.rotation.w = q_ned_to_enu.w();
+//
+//    tf_static_broadcaster_->sendTransform(t_ned_to_enu);
+//
+//    Eigen::Affine3d ned_to_enu = tf2::transformToEigen(t_ned_to_enu);
+//    Eigen::Matrix4d ned_to_enu_mat = ned_to_enu.matrix();
+//
+//
+//    // NED to VELODYNE
+//    Eigen::Quaterniond q_ned_to_velodyne;
+//    q_ned_to_velodyne = Eigen::AngleAxisd(deg_to_rad<double>(0.742711), Eigen::Vector3d::UnitZ()) *
+//                        Eigen::AngleAxisd(deg_to_rad<double>(-0.464242), Eigen::Vector3d::UnitY()) *
+//                        Eigen::AngleAxisd(deg_to_rad<double>(179.715196), Eigen::Vector3d::UnitX());
+//
+//    geometry_msgs::msg::TransformStamped t_ned_to_velodyne;
+//    t_ned_to_velodyne.header.stamp = rclcpp::Clock().now();
+//    t_ned_to_velodyne.header.frame_id = "enu-gnss";
+//    t_ned_to_velodyne.child_frame_id = "velodyne";
+//    t_ned_to_velodyne.transform.translation.x = 0.0;
+//    t_ned_to_velodyne.transform.translation.y = 0.0;
+//    t_ned_to_velodyne.transform.translation.z = 0.1;
+//    t_ned_to_velodyne.transform.rotation.x = q_ned_to_velodyne.x();
+//    t_ned_to_velodyne.transform.rotation.y = q_ned_to_velodyne.y();
+//    t_ned_to_velodyne.transform.rotation.z = q_ned_to_velodyne.z();
+//    t_ned_to_velodyne.transform.rotation.w = q_ned_to_velodyne.w();
+//
+//    tf_static_broadcaster_->sendTransform(t_ned_to_velodyne);
+//
+//    Eigen::Affine3d ned_to_velodyne = tf2::transformToEigen(t_ned_to_velodyne);
+//    Eigen::Matrix4d ned_to_velodyne_mat = ned_to_velodyne.matrix();
+//
+//    // VELOYNE to LIDAR_ROS
+//    Eigen::Quaterniond q_velodyne_to_lidar_ros;
+//    q_velodyne_to_lidar_ros = Eigen::AngleAxisd(deg_to_rad<double>(90), Eigen::Vector3d::UnitZ()) *
+//                              Eigen::AngleAxisd(deg_to_rad<double>(0), Eigen::Vector3d::UnitY()) *
+//                              Eigen::AngleAxisd(deg_to_rad<double>(0), Eigen::Vector3d::UnitX());
+//
+//    geometry_msgs::msg::TransformStamped t_velodyne_to_lidar_ros;
+//    t_velodyne_to_lidar_ros.header.stamp = rclcpp::Clock().now();
+//    t_velodyne_to_lidar_ros.header.frame_id = "velodyne";
+//    t_velodyne_to_lidar_ros.child_frame_id = "lidar_ros";
+//    t_velodyne_to_lidar_ros.transform.translation.x = 0.0;
+//    t_velodyne_to_lidar_ros.transform.translation.y = 0.0;
+//    t_velodyne_to_lidar_ros.transform.translation.z = 0.0;
+//    t_velodyne_to_lidar_ros.transform.rotation.x = q_velodyne_to_lidar_ros.x();
+//    t_velodyne_to_lidar_ros.transform.rotation.y = q_velodyne_to_lidar_ros.y();
+//    t_velodyne_to_lidar_ros.transform.rotation.z = q_velodyne_to_lidar_ros.z();
+//    t_velodyne_to_lidar_ros.transform.rotation.w = q_velodyne_to_lidar_ros.w();
+//
+//    tf_static_broadcaster_->sendTransform(t_velodyne_to_lidar_ros);
+//
+//    Eigen::Affine3d velodyne_to_lidar_ros = tf2::transformToEigen(t_velodyne_to_lidar_ros);
+//    Eigen::Matrix4d velodyne_to_lidar_ros_mat = velodyne_to_lidar_ros.matrix();
+//
+//    // LIDAR_ROS to CAMERA
+//    Eigen::Quaterniond q_lidar_ros_to_camera;
+//    q_lidar_ros_to_camera = Eigen::AngleAxisd(3.1055002572281754, Eigen::Vector3d::UnitZ()) *
+//                            Eigen::AngleAxisd(-0.011186821744700943, Eigen::Vector3d::UnitY()) *
+//                            Eigen::AngleAxisd(-1.613769866234427, Eigen::Vector3d::UnitX());
+//
+//    geometry_msgs::msg::TransformStamped t_lidar_ros_to_camera;
+//    t_lidar_ros_to_camera.header.stamp = rclcpp::Clock().now();
+//    t_lidar_ros_to_camera.header.frame_id = "lidar_ros";
+//    t_lidar_ros_to_camera.child_frame_id = "pylon_camera_link";
+//    t_lidar_ros_to_camera.transform.translation.x = 0.015976527214191717;
+//    t_lidar_ros_to_camera.transform.translation.y = -0.14058677051467006;
+//    t_lidar_ros_to_camera.transform.translation.z = -0.08027769563042886;
+//    t_lidar_ros_to_camera.transform.rotation.x = q_lidar_ros_to_camera.x();
+//    t_lidar_ros_to_camera.transform.rotation.y = q_lidar_ros_to_camera.y();
+//    t_lidar_ros_to_camera.transform.rotation.z = q_lidar_ros_to_camera.z();
+//    t_lidar_ros_to_camera.transform.rotation.w = q_lidar_ros_to_camera.w();
+//
+//    tf_static_broadcaster_->sendTransform(t_lidar_ros_to_camera);
+//
+//    Eigen::Affine3d lidar_ros_to_camera = tf2::transformToEigen(t_lidar_ros_to_camera);
+//    Eigen::Matrix4d lidar_ros_to_camera_mat = lidar_ros_to_camera.matrix();
+//
+//    // CURRENT POSE
+//    Eigen::Quaterniond q_current_pose;
+//    q_current_pose = Eigen::AngleAxisd(deg_to_rad<double>(gnss_data.data.heading), Eigen::Vector3d::UnitZ()) *
+//                     Eigen::AngleAxisd(deg_to_rad<double>(gnss_data.data.pitch), Eigen::Vector3d::UnitY()) *
+//                     Eigen::AngleAxisd(deg_to_rad<double>(gnss_data.data.roll), Eigen::Vector3d::UnitX());
+//    Eigen::Matrix4d current_pose_mat = Eigen::Matrix4d::Identity();
+//    current_pose_mat.block<3, 3>(0, 0) = q_current_pose.toRotationMatrix();
+//    current_pose_mat(0, 3) = x;
+//    current_pose_mat(1, 3) = y;
+//    current_pose_mat(2, 3) = z;
+//
+//    // --------------------------------------------------------------------------------------------
+////    current_pose_mat = ned_to_enu_mat * current_pose_mat;
+////    current_pose_mat = ned_to_velodyne_mat * current_pose_mat;
+////    current_pose_mat = velodyne_to_lidar_ros_mat * current_pose_mat;
+////    current_pose_mat = lidar_ros_to_camera_mat * current_pose_mat;
+//
+//    geometry_msgs::msg::Pose pose_msg;
+//    pose_msg.position.x = current_pose_mat(0, 3);
+//    pose_msg.position.y = current_pose_mat(1, 3);
+//    pose_msg.position.z = current_pose_mat(2, 3);
+//    Eigen::Quaterniond q_current_pose_ros;
+//    q_current_pose_ros = Eigen::AngleAxisd(deg_to_rad<double>(-90), Eigen::Vector3d::UnitZ()) *
+//                         Eigen::AngleAxisd(deg_to_rad<double>(0), Eigen::Vector3d::UnitY()) *
+//                         Eigen::AngleAxisd(deg_to_rad<double>(0), Eigen::Vector3d::UnitX()) *
+//                         q_current_pose;
+//    pose_msg.orientation.x = q_current_pose_ros.x();
+//    pose_msg.orientation.y = q_current_pose_ros.y();
+//    pose_msg.orientation.z = q_current_pose_ros.z();
+//    pose_msg.orientation.w = q_current_pose_ros.w();
+//
+//    m_pose_array.poses.push_back(pose_msg);
+//    m_pose_array.header.frame_id = "ned-gnss";
+//    m_pose_array_publisher->publish(m_pose_array);
+//
+//    // POINT CLOUD
+//    pcl::PointCloud<pcl::PointXYZI>::Ptr cloud(new pcl::PointCloud <pcl::PointXYZI>);
+//    pcl::fromROSMsg(point_cloud_data.data, *cloud);
+////    pcl::transformPointCloud(*cloud, *cloud, lidar_ros_to_camera_mat);
+//    pcl::transformPointCloud(*cloud, *cloud, current_pose_mat);
+//
+//    sensor_msgs::msg::PointCloud2 point_cloud_data_transformed;
+//    pcl::toROSMsg(*cloud, point_cloud_data_transformed);
+//    point_cloud_data_transformed.header.frame_id = "velodyne";
+//    m_point_cloud_publisher->publish(point_cloud_data_transformed);
+//}
 
 //void BagReader::visualizer(ImageData image_data, PointCloudData &point_cloud_data, const GnssData &gnss_data) {
 //
@@ -377,7 +552,28 @@ void BagReader::saveData(ImageData image_data, PointCloudData point_cloud_data, 
 //    m_point_cloud_publisher->publish(point_cloud_data_transformed);
 //}
 
-void BagReader::visualizer(ImageData image_data, PointCloudData &point_cloud_data, const GnssData &gnss_data) {
+Eigen::Matrix4d BagReader::visualizer(ImageData image_data, PointCloudData &point_cloud_data, const GnssData &gnss_data) {
+
+    cv_bridge::CvImagePtr cv_ptr;
+    cv_ptr = cv_bridge::toCvCopy(image_data.data, sensor_msgs::image_encodings::BGR8);
+
+    sensor_msgs::msg::Image image_msg;
+    image_msg = *cv_ptr->toImageMsg();
+    m_image_publisher->publish(image_msg);
+
+    sensor_msgs::msg::CameraInfo camera_info_msg;
+    camera_info_msg.header.stamp = rclcpp::Clock().now();
+    camera_info_msg.header.frame_id = "pylon_camera_link";
+    camera_info_msg.height = 1080;
+    camera_info_msg.width = 1440;
+    camera_info_msg.distortion_model = "plumb_bob";
+    camera_info_msg.d = {-0.345800, 0.121396, -0.000666, -0.000996, 0.000000};
+    camera_info_msg.k = {1051.301058, 0.000000, 746.065934, 0.000000, 1057.779841, 555.827273, 0.000000, 0.000000,
+                         1.000000};
+    camera_info_msg.r = {1.000000, 0.000000, 0.000000, 0.000000, 1.000000, 0.000000, 0.000000, 0.000000, 1.000000};
+    camera_info_msg.p = {869.72522, 0., 673.35093, 0., 0., 959.5163, 529.28741, 0., 0., 0., 1., 0.};
+    m_camera_info_publisher->publish(camera_info_msg);
+
     // -------------------- GNSS  PART --------------------
     double x;
     double y;
@@ -385,115 +581,13 @@ void BagReader::visualizer(ImageData image_data, PointCloudData &point_cloud_dat
     m_local_origin.Forward(gnss_data.data.lla.latitude, gnss_data.data.lla.longitude, gnss_data.data.lla.altitude, x, y,
                            z);
 
-    Eigen::Matrix4d pose_mat = Eigen::Matrix4d::Identity();
-    pose_mat(0, 3) = x;
-    pose_mat(1, 3) = y;
-    pose_mat(2, 3) = z;
 
-
-    // NED TO ENU
-    Eigen::Quaterniond q_ned_to_enu;
-    q_ned_to_enu = Eigen::AngleAxisd(deg_to_rad<double>(gnss_data.data.roll + 180), Eigen::Vector3d::UnitX()) *
-                   Eigen::AngleAxisd(deg_to_rad<double>(gnss_data.data.pitch), Eigen::Vector3d::UnitY()) *
-                   Eigen::AngleAxisd(deg_to_rad<double>(gnss_data.data.heading - 90), Eigen::Vector3d::UnitZ());
-    q_ned_to_enu = q_ned_to_enu.inverse();
-    pose_mat.block<3, 3>(0, 0) = q_ned_to_enu.toRotationMatrix();
-
-    // GNSS TO LIDAR
-    Eigen::Matrix4d gnss_to_lidar = Eigen::Matrix4d::Identity();
-    Eigen::Quaterniond gnss_to_lidar_q;
-    gnss_to_lidar_q = Eigen::AngleAxisd(deg_to_rad<double>(179.715196), Eigen::Vector3d::UnitX()) *
-                      Eigen::AngleAxisd(deg_to_rad<double>(-0.464242), Eigen::Vector3d::UnitY()) *
-                      Eigen::AngleAxisd(deg_to_rad<double>(90.742711), Eigen::Vector3d::UnitZ());
-    Eigen::Quaterniond gnss_to_lidar_q2 = gnss_to_lidar_q;
-    gnss_to_lidar.block<3, 3>(0, 0) = gnss_to_lidar_q2.toRotationMatrix();
-    gnss_to_lidar(0, 3) = 0.0; // x
-    gnss_to_lidar(1, 3) = 0.0; // y
-    gnss_to_lidar(2, 3) = 0.1; // z
-    pose_mat = pose_mat * gnss_to_lidar;
-
-    // LIDAR TO CAMERA
-    Eigen::Matrix4d lidar_to_camera = Eigen::Matrix4d::Identity();
-    Eigen::Quaterniond lidar_to_camera_q;
-    lidar_to_camera_q = Eigen::AngleAxisd(-3.116503125405655, Eigen::Vector3d::UnitZ()) *
-                        Eigen::AngleAxisd(0.008405523479203703, Eigen::Vector3d::UnitY()) *
-                        Eigen::AngleAxisd(-1.5775131156436477, Eigen::Vector3d::UnitX());
-    Eigen::Quaterniond lidar_to_camera_q2 = lidar_to_camera_q;
-    lidar_to_camera.block<3, 3>(0, 0) = lidar_to_camera_q2.toRotationMatrix();
-    lidar_to_camera(0, 3) = -0.016989523180533185; // x
-    lidar_to_camera(1, 3) = -0.10956637435592069; // y
-    lidar_to_camera(2, 3) = -0.18908994499947854; // z
-    pose_mat = lidar_to_camera * pose_mat;
-
-    Eigen::Quaterniond q_last = Eigen::Quaterniond(pose_mat.block<3, 3>(0, 0));
-    geometry_msgs::msg::Pose pose;
-    pose.position.x = pose_mat(0, 3);
-    pose.position.y = pose_mat(1, 3);
-    pose.position.z = pose_mat(2, 3);
-    pose.orientation.x = q_last.x();
-    pose.orientation.y = q_last.y();
-    pose.orientation.z = q_last.z();
-    pose.orientation.w = q_last.w();
-
-    m_pose_array.poses.push_back(pose);
-    m_pose_array.header.frame_id = "pylon_camera_link";
-    m_pose_array_publisher->publish(m_pose_array);
-    // -------------------- GNSS  PART --------------------
-
-    // -------------------- POINT CLOUD PART --------------------
-    pcl::PointCloud<pcl::PointXYZI>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZI>);
-    pcl::fromROSMsg(point_cloud_data.data, *cloud);
-    pcl::transformPointCloud(*cloud, *cloud, pose_mat);
-
-    sensor_msgs::msg::PointCloud2 point_cloud_data_transformed;
-    pcl::toROSMsg(*cloud, point_cloud_data_transformed);
-    point_cloud_data_transformed.header.frame_id = "pylon_camera_link";
-    m_point_cloud_publisher->publish(point_cloud_data_transformed);
-    // -------------------- POINT CLOUD PART --------------------
-}
-
-void BagReader::tf_publisher() {
-
-    // Publish transforme between enu and ned
-    Eigen::Quaternionf q_enu_to_ned;
-    q_enu_to_ned = Eigen::AngleAxisf(deg_to_rad<double>(180), Eigen::Vector3f::UnitX()) *
-                   Eigen::AngleAxisf(deg_to_rad<double>(0), Eigen::Vector3f::UnitY()) *
-                   Eigen::AngleAxisf(deg_to_rad<double>(-90), Eigen::Vector3f::UnitZ());
-
-    geometry_msgs::msg::TransformStamped enu_to_ned;
-    enu_to_ned.header.stamp = rclcpp::Clock().now();
-    enu_to_ned.header.frame_id = "enu";
-    enu_to_ned.child_frame_id = "ned";
-    enu_to_ned.transform.translation.x = 0;
-    enu_to_ned.transform.translation.y = 0;
-    enu_to_ned.transform.translation.z = 0;
-    enu_to_ned.transform.rotation.x = q_enu_to_ned.x();
-    enu_to_ned.transform.rotation.y = q_enu_to_ned.y();
-    enu_to_ned.transform.rotation.z = q_enu_to_ned.z();
-    enu_to_ned.transform.rotation.w = q_enu_to_ned.w();
-
-    tf_static_broadcaster_->sendTransform(enu_to_ned);
-
-    // Publish transforme between ned to gnss
-    geometry_msgs::msg::TransformStamped ned_to_gnss;
-    ned_to_gnss.header.stamp = rclcpp::Clock().now();
-    ned_to_gnss.header.frame_id = "ned";
-    ned_to_gnss.child_frame_id = "gnss";
-    ned_to_gnss.transform.translation.x = 0;
-    ned_to_gnss.transform.translation.y = 0;
-    ned_to_gnss.transform.translation.z = 0;
-    ned_to_gnss.transform.rotation.x = 0;
-    ned_to_gnss.transform.rotation.y = 0;
-    ned_to_gnss.transform.rotation.z = 0;
-    ned_to_gnss.transform.rotation.w = 1;
-
-    tf_static_broadcaster_->sendTransform(ned_to_gnss);
-
-    // Publish transforme between gnss to velodyne
+    // GNSS TO VELODYNE
+    Eigen::Matrix4d gnss_to_velodyne_mat = Eigen::Matrix4d::Identity();
     Eigen::Quaternionf q_gnss_to_velodyne;
     q_gnss_to_velodyne = Eigen::AngleAxisf(deg_to_rad<double>(179.715196), Eigen::Vector3f::UnitX()) *
                          Eigen::AngleAxisf(deg_to_rad<double>(-0.464242), Eigen::Vector3f::UnitY()) *
-                         Eigen::AngleAxisf(deg_to_rad<double>(90.742711), Eigen::Vector3f::UnitZ());
+                         Eigen::AngleAxisf(deg_to_rad<double>(0.742711), Eigen::Vector3f::UnitZ());
     geometry_msgs::msg::TransformStamped gnss_to_velodyne;
     gnss_to_velodyne.header.stamp = rclcpp::Clock().now();
     gnss_to_velodyne.header.frame_id = "gnss";
@@ -508,7 +602,11 @@ void BagReader::tf_publisher() {
 
     tf_static_broadcaster_->sendTransform(gnss_to_velodyne);
 
-    // Publish transforme between velodyne to lidar_ros
+    Eigen::Affine3d affine_gnss_to_velodyne = tf2::transformToEigen(gnss_to_velodyne);
+    gnss_to_velodyne_mat = affine_gnss_to_velodyne.matrix();
+
+    // VELODYNE TO LIDAR ROS
+    Eigen::Matrix4d velodyne_to_lidar_ros_mat = Eigen::Matrix4d::Identity();
     Eigen::Quaternionf q_velodyne_to_lidar_ros;
     q_velodyne_to_lidar_ros = Eigen::AngleAxisf(deg_to_rad<double>(0), Eigen::Vector3f::UnitX()) *
                               Eigen::AngleAxisf(deg_to_rad<double>(0), Eigen::Vector3f::UnitY()) *
@@ -527,18 +625,22 @@ void BagReader::tf_publisher() {
 
     tf_static_broadcaster_->sendTransform(velodyne_to_lidar_ros);
 
-    // Publish transforme between lidar_ros to camera
+    Eigen::Affine3d affine_velodyne_to_lidar_ros = tf2::transformToEigen(velodyne_to_lidar_ros);
+    velodyne_to_lidar_ros_mat = affine_velodyne_to_lidar_ros.matrix();
+
+    // LIDAR TO CAMERA
+    Eigen::Matrix4d lidar_ros_to_camera_mat = Eigen::Matrix4d::Identity();
     Eigen::Quaternionf q_lidar_ros_to_camera;
-    q_lidar_ros_to_camera = Eigen::AngleAxisf(3.1055002572281754, Eigen::Vector3f::UnitZ()) *
-                            Eigen::AngleAxisf(-0.011186821744700943, Eigen::Vector3f::UnitY()) *
-                            Eigen::AngleAxisf(-1.613769866234427, Eigen::Vector3f::UnitX());
+    q_lidar_ros_to_camera = Eigen::AngleAxisf(-3.116503125405655, Eigen::Vector3f::UnitZ()) *
+                            Eigen::AngleAxisf(0.008405523479203703, Eigen::Vector3f::UnitY()) *
+                            Eigen::AngleAxisf(-1.5775131156436477, Eigen::Vector3f::UnitX());
     geometry_msgs::msg::TransformStamped lidar_ros_to_camera;
     lidar_ros_to_camera.header.stamp = rclcpp::Clock().now();
     lidar_ros_to_camera.header.frame_id = "lidar_ros";
     lidar_ros_to_camera.child_frame_id = "pylon_camera_link";
-    lidar_ros_to_camera.transform.translation.x = 0.015976527214191717;
-    lidar_ros_to_camera.transform.translation.y = -0.14058677051467006;
-    lidar_ros_to_camera.transform.translation.z = -0.08027769563042886;
+    lidar_ros_to_camera.transform.translation.x = -0.016989523180533185;
+    lidar_ros_to_camera.transform.translation.y = -0.10956637435592069;
+    lidar_ros_to_camera.transform.translation.z =  -0.18908994499947854;
     lidar_ros_to_camera.transform.rotation.x = q_lidar_ros_to_camera.x();
     lidar_ros_to_camera.transform.rotation.y = q_lidar_ros_to_camera.y();
     lidar_ros_to_camera.transform.rotation.z = q_lidar_ros_to_camera.z();
@@ -547,11 +649,277 @@ void BagReader::tf_publisher() {
     tf_static_broadcaster_->sendTransform(lidar_ros_to_camera);
 
     Eigen::Affine3d affine_velo_to_cam_ = tf2::transformToEigen(lidar_ros_to_camera);
+    lidar_ros_to_camera_mat = affine_velo_to_cam_.matrix();
 
-    mLidarToCamera = affine_velo_to_cam_.matrix();
+    // GNSS TO MAP
+    Eigen::Quaterniond q_map_to_gnss;
+    q_map_to_gnss = Eigen::AngleAxisd(deg_to_rad<double>(gnss_data.data.roll + 180), Eigen::Vector3d::UnitX()) *
+                    Eigen::AngleAxisd(deg_to_rad<double>(gnss_data.data.pitch), Eigen::Vector3d::UnitY()) *
+                    Eigen::AngleAxisd(deg_to_rad<double>(gnss_data.data.heading - 90), Eigen::Vector3d::UnitZ());
 
-    std::cout << "mLidarToCamera: " << mLidarToCamera << std::endl;
+    Eigen::Matrix4d pose_x = Eigen::Matrix4d::Identity();
+    pose_x.block<3, 3>(0, 0) = q_map_to_gnss.toRotationMatrix();
+    pose_x(0, 3) = x;
+    pose_x(1, 3) = y;
+    pose_x(2, 3) = z;
+
+    // transform pose -90 degrees in Y axis and +90 degrees in X axis
+    Eigen::Matrix4d pose_y = Eigen::Matrix4d::Identity();
+    pose_y.block<3, 3>(0, 0) = (
+            Eigen::AngleAxisd(deg_to_rad<double>(-90), Eigen::Vector3d::UnitY()) *
+            Eigen::AngleAxisd(deg_to_rad<double>(90), Eigen::Vector3d::UnitX())
+            ).toRotationMatrix();
+    pose_x = pose_y * pose_x;
+    Eigen::Quaterniond q_map_to_gnss_2;
+    q_map_to_gnss_2 = pose_x.block<3, 3>(0, 0);
+
+    geometry_msgs::msg::TransformStamped map_to_gnss;
+    map_to_gnss.header.stamp = rclcpp::Clock().now();
+    map_to_gnss.header.frame_id = "map";
+    map_to_gnss.child_frame_id = "gnss";
+    map_to_gnss.transform.translation.x = pose_x(0, 3);
+    map_to_gnss.transform.translation.y = pose_x(1, 3);
+    map_to_gnss.transform.translation.z = pose_x(2, 3);
+    map_to_gnss.transform.rotation.x = q_map_to_gnss_2.x();
+    map_to_gnss.transform.rotation.y = q_map_to_gnss_2.y();
+    map_to_gnss.transform.rotation.z = q_map_to_gnss_2.z();
+    map_to_gnss.transform.rotation.w = q_map_to_gnss_2.w();
+
+    tf_static_broadcaster_->sendTransform(map_to_gnss);
+
+    geometry_msgs::msg::TransformStamped t;
+    try {
+        t = tf_buffer_->lookupTransform(
+                "map", "pylon_camera_link",
+                tf2::TimePointZero);
+    } catch (const tf2::TransformException & ex) {
+        RCLCPP_INFO(
+                this->get_logger(), "Could not transform %s to %s: %s",
+                "pylon_camera_link", "map", ex.what());
+        return Eigen::Matrix4d::Identity();
+    }
+
+    // POSE PART
+    Eigen::Matrix4d pose_mat = Eigen::Matrix4d::Identity();
+    Eigen::Quaterniond q;
+    q.x() = t.transform.rotation.x;
+    q.y() = t.transform.rotation.y;
+    q.z() = t.transform.rotation.z;
+    q.w() = t.transform.rotation.w;
+    pose_mat.block<3, 3>(0, 0) = q.toRotationMatrix();
+    pose_mat(0, 3) = t.transform.translation.x;
+    pose_mat(1, 3) = t.transform.translation.y;
+    pose_mat(2, 3) = t.transform.translation.z;
+
+    geometry_msgs::msg::Pose pose;
+    pose.position.x = pose_mat(0, 3);
+    pose.position.y = pose_mat(1, 3);
+    pose.position.z = pose_mat(2, 3);
+    pose.orientation.x = q.x();
+    pose.orientation.y = q.y();
+    pose.orientation.z = q.z();
+    pose.orientation.w = q.w();
+    m_pose_array.poses.push_back(pose);
+    m_pose_array.header.frame_id = "map";
+    m_pose_array_publisher->publish(m_pose_array);
+    // -------------------- GNSS  PART --------------------
+
+    // -------------------- POINT CLOUD PART --------------------
+    pcl::PointCloud<pcl::PointXYZI>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZI>);
+    pcl::fromROSMsg(point_cloud_data.data, *cloud);
+//    pcl::transformPointCloud(*cloud, *cloud, lidar_ros_to_camera_mat);
+
+    sensor_msgs::msg::PointCloud2 point_cloud_data_transformed;
+    pcl::toROSMsg(*cloud, point_cloud_data_transformed);
+    point_cloud_data_transformed.header.frame_id = "lidar_ros";
+    m_point_cloud_publisher->publish(point_cloud_data_transformed);
+    // -------------------- POINT CLOUD PART --------------------
+
+    return pose_mat;
 }
+
+//void BagReader::visualizer(ImageData image_data, PointCloudData &point_cloud_data, const GnssData &gnss_data) {
+//
+//    // -------------------- FIRST POSE --------------------
+//    double first_x;
+//    double first_y;
+//    double first_z;
+//    m_local_origin.Forward(m_first_gnss_data.data.lla.latitude, m_first_gnss_data.data.lla.longitude,
+//                           m_first_gnss_data.data.lla.altitude, first_x, first_y,
+//                           first_z);
+//    Eigen::Matrix4d first_pose_mat = Eigen::Matrix4d::Identity();
+//    Eigen::Quaterniond first_q_ned_to_enu;
+//    first_q_ned_to_enu = Eigen::AngleAxisd(deg_to_rad(m_first_gnss_data.data.roll + 180), Eigen::Vector3d::UnitX()) *
+//                         Eigen::AngleAxisd(deg_to_rad(m_first_gnss_data.data.pitch), Eigen::Vector3d::UnitY()) *
+//                         Eigen::AngleAxisd(deg_to_rad(m_first_gnss_data.data.heading - 90), Eigen::Vector3d::UnitZ());
+//    first_pose_mat.block<3, 3>(0, 0) = first_q_ned_to_enu.toRotationMatrix();
+//    first_pose_mat(0, 3) = first_x;
+//    first_pose_mat(1, 3) = first_y;
+//    first_pose_mat(2, 3) = first_z;
+//    // -------------------- FIRST POSE --------------------
+//
+//    double x;
+//    double y;
+//    double z;
+//    m_local_origin.Forward(gnss_data.data.lla.latitude, gnss_data.data.lla.longitude, gnss_data.data.lla.altitude, x, y,
+//                           z);
+//    Eigen::Matrix4d pose_mat = Eigen::Matrix4d::Identity();
+//    Eigen::Quaterniond q_pose;
+//    q_pose = Eigen::AngleAxisd(deg_to_rad(gnss_data.data.roll + 180), Eigen::Vector3d::UnitX()) *
+//             Eigen::AngleAxisd(deg_to_rad(gnss_data.data.pitch + 90), Eigen::Vector3d::UnitY()) *
+//             Eigen::AngleAxisd(deg_to_rad(gnss_data.data.heading), Eigen::Vector3d::UnitZ());
+//    pose_mat.block<3, 3>(0, 0) = q_pose.toRotationMatrix();
+//    pose_mat(0, 3) = x;
+//    pose_mat(1, 3) = y;
+//    pose_mat(2, 3) = z;
+//
+//    pose_mat = first_pose_mat.inverse() * pose_mat;
+//
+//    // -------------------- LİDAR GNSS --------------------
+//    Eigen::Matrix4d gnss_to_lidar = Eigen::Matrix4d::Identity();
+//    Eigen::Quaterniond gnss_to_lidar_q;
+//    gnss_to_lidar_q = Eigen::AngleAxisd(deg_to_rad<double>(179.715196), Eigen::Vector3d::UnitX()) *
+//                      Eigen::AngleAxisd(deg_to_rad<double>(-0.464242), Eigen::Vector3d::UnitY()) *
+//                      Eigen::AngleAxisd(deg_to_rad<double>(90.742711), Eigen::Vector3d::UnitZ());
+//    Eigen::Quaterniond gnss_to_lidar_q2 = gnss_to_lidar_q;
+//    gnss_to_lidar.block<3, 3>(0, 0) = gnss_to_lidar_q2.toRotationMatrix();
+//    gnss_to_lidar(0, 3) = 0.0; // x
+//    gnss_to_lidar(1, 3) = 0.0; // y
+//    gnss_to_lidar(2, 3) = 0.1; // z
+//
+//    pose_mat = pose_mat * gnss_to_lidar;
+//
+//    // -------------------- LİDAR CAMERA --------------------
+//    Eigen::Matrix4d lidar_to_camera = Eigen::Matrix4d::Identity();
+//    Eigen::Quaterniond lidar_to_camera_q;
+//    lidar_to_camera_q = Eigen::AngleAxisd(-3.116503125405655, Eigen::Vector3d::UnitZ()) *
+//                        Eigen::AngleAxisd(0.008405523479203703, Eigen::Vector3d::UnitY()) *
+//                        Eigen::AngleAxisd(-1.5775131156436477, Eigen::Vector3d::UnitX());
+//    Eigen::Quaterniond lidar_to_camera_q2 = lidar_to_camera_q;
+//    lidar_to_camera.block<3, 3>(0, 0) = lidar_to_camera_q2.toRotationMatrix();
+//    lidar_to_camera(0, 3) = -0.016989523180533185; // x
+//    lidar_to_camera(1, 3) = -0.10956637435592069; // y
+//    lidar_to_camera(2, 3) = -0.18908994499947854; // z
+//
+//    pose_mat = lidar_to_camera * pose_mat;
+//
+//    Eigen::Quaterniond q_last = Eigen::Quaterniond(pose_mat.block<3, 3>(0, 0));
+//    geometry_msgs::msg::Pose pose;
+//    pose.position.x = pose_mat(0, 3);
+//    pose.position.y = pose_mat(1, 3);
+//    pose.position.z = pose_mat(2, 3);
+//    pose.orientation.x = q_last.x();
+//    pose.orientation.y = q_last.y();
+//    pose.orientation.z = q_last.z();
+//    pose.orientation.w = q_last.w();
+//
+//    m_pose_array.poses.push_back(pose);
+//    m_pose_array.header.frame_id = "pylon_camera_link";
+//    m_pose_array_publisher->publish(m_pose_array);
+//}
+
+void BagReader::tf_publisher() {}
+
+//void BagReader::tf_publisher() {
+//
+//    // Publish transforme between enu and ned
+////    Eigen::Quaternionf q_enu_to_ned;
+////    q_enu_to_ned = Eigen::AngleAxisf(deg_to_rad<double>(180), Eigen::Vector3f::UnitX()) *
+////                   Eigen::AngleAxisf(deg_to_rad<double>(0), Eigen::Vector3f::UnitY()) *
+////                   Eigen::AngleAxisf(deg_to_rad<double>(-90), Eigen::Vector3f::UnitZ());
+////
+////    geometry_msgs::msg::TransformStamped enu_to_ned;
+////    enu_to_ned.header.stamp = rclcpp::Clock().now();
+////    enu_to_ned.header.frame_id = "ned-gnss";
+////    enu_to_ned.child_frame_id = "enu-gnss";
+////    enu_to_ned.transform.translation.x = 0;
+////    enu_to_ned.transform.translation.y = 0;
+////    enu_to_ned.transform.translation.z = 0;
+////    enu_to_ned.transform.rotation.x = q_enu_to_ned.x();
+////    enu_to_ned.transform.rotation.y = q_enu_to_ned.y();
+////    enu_to_ned.transform.rotation.z = q_enu_to_ned.z();
+////    enu_to_ned.transform.rotation.w = q_enu_to_ned.w();
+////
+////    tf_static_broadcaster_->sendTransform(enu_to_ned);
+//
+//    // Publish transforme between ned to gnss
+////    geometry_msgs::msg::TransformStamped ned_to_gnss;
+////    ned_to_gnss.header.stamp = rclcpp::Clock().now();
+////    ned_to_gnss.header.frame_id = "enu-gnss";
+////    ned_to_gnss.child_frame_id = "gnss";
+////    ned_to_gnss.transform.translation.x = 0;
+////    ned_to_gnss.transform.translation.y = 0;
+////    ned_to_gnss.transform.translation.z = 0;
+////    ned_to_gnss.transform.rotation.x = 0;
+////    ned_to_gnss.transform.rotation.y = 0;
+////    ned_to_gnss.transform.rotation.z = 0;
+////    ned_to_gnss.transform.rotation.w = 1;
+////
+////    tf_static_broadcaster_->sendTransform(ned_to_gnss);
+//
+//    // Publish transforme between gnss to velodyne
+//    Eigen::Quaternionf q_gnss_to_velodyne;
+//    q_gnss_to_velodyne = Eigen::AngleAxisf(deg_to_rad<double>(179.715196), Eigen::Vector3f::UnitX()) *
+//                         Eigen::AngleAxisf(deg_to_rad<double>(-0.464242), Eigen::Vector3f::UnitY()) *
+//                         Eigen::AngleAxisf(deg_to_rad<double>(0.742711), Eigen::Vector3f::UnitZ());
+//    geometry_msgs::msg::TransformStamped gnss_to_velodyne;
+//    gnss_to_velodyne.header.stamp = rclcpp::Clock().now();
+//    gnss_to_velodyne.header.frame_id = "gnss";
+//    gnss_to_velodyne.child_frame_id = "velodyne";
+//    gnss_to_velodyne.transform.translation.x = 0.1;
+//    gnss_to_velodyne.transform.translation.y = 0;
+//    gnss_to_velodyne.transform.translation.z = 0;
+//    gnss_to_velodyne.transform.rotation.x = q_gnss_to_velodyne.x();
+//    gnss_to_velodyne.transform.rotation.y = q_gnss_to_velodyne.y();
+//    gnss_to_velodyne.transform.rotation.z = q_gnss_to_velodyne.z();
+//    gnss_to_velodyne.transform.rotation.w = q_gnss_to_velodyne.w();
+//
+//    tf_static_broadcaster_->sendTransform(gnss_to_velodyne);
+//
+//    // Publish transforme between velodyne to lidar_ros
+//    Eigen::Quaternionf q_velodyne_to_lidar_ros;
+//    q_velodyne_to_lidar_ros = Eigen::AngleAxisf(deg_to_rad<double>(0), Eigen::Vector3f::UnitX()) *
+//                              Eigen::AngleAxisf(deg_to_rad<double>(0), Eigen::Vector3f::UnitY()) *
+//                              Eigen::AngleAxisf(deg_to_rad<double>(90), Eigen::Vector3f::UnitZ());
+//    geometry_msgs::msg::TransformStamped velodyne_to_lidar_ros;
+//    velodyne_to_lidar_ros.header.stamp = rclcpp::Clock().now();
+//    velodyne_to_lidar_ros.header.frame_id = "velodyne";
+//    velodyne_to_lidar_ros.child_frame_id = "lidar_ros";
+//    velodyne_to_lidar_ros.transform.translation.x = 0;
+//    velodyne_to_lidar_ros.transform.translation.y = 0;
+//    velodyne_to_lidar_ros.transform.translation.z = 0;
+//    velodyne_to_lidar_ros.transform.rotation.x = q_velodyne_to_lidar_ros.x();
+//    velodyne_to_lidar_ros.transform.rotation.y = q_velodyne_to_lidar_ros.y();
+//    velodyne_to_lidar_ros.transform.rotation.z = q_velodyne_to_lidar_ros.z();
+//    velodyne_to_lidar_ros.transform.rotation.w = q_velodyne_to_lidar_ros.w();
+//
+//    tf_static_broadcaster_->sendTransform(velodyne_to_lidar_ros);
+//
+//    // Publish transforme between lidar_ros to camera
+//    Eigen::Quaternionf q_lidar_ros_to_camera;
+//    q_lidar_ros_to_camera = Eigen::AngleAxisf(3.1055002572281754, Eigen::Vector3f::UnitZ()) *
+//                            Eigen::AngleAxisf(-0.011186821744700943, Eigen::Vector3f::UnitY()) *
+//                            Eigen::AngleAxisf(-1.613769866234427, Eigen::Vector3f::UnitX());
+//    geometry_msgs::msg::TransformStamped lidar_ros_to_camera;
+//    lidar_ros_to_camera.header.stamp = rclcpp::Clock().now();
+//    lidar_ros_to_camera.header.frame_id = "lidar_ros";
+//    lidar_ros_to_camera.child_frame_id = "pylon_camera_link";
+//    lidar_ros_to_camera.transform.translation.x = 0.015976527214191717;
+//    lidar_ros_to_camera.transform.translation.y = -0.14058677051467006;
+//    lidar_ros_to_camera.transform.translation.z = -0.08027769563042886;
+//    lidar_ros_to_camera.transform.rotation.x = q_lidar_ros_to_camera.x();
+//    lidar_ros_to_camera.transform.rotation.y = q_lidar_ros_to_camera.y();
+//    lidar_ros_to_camera.transform.rotation.z = q_lidar_ros_to_camera.z();
+//    lidar_ros_to_camera.transform.rotation.w = q_lidar_ros_to_camera.w();
+//
+//    tf_static_broadcaster_->sendTransform(lidar_ros_to_camera);
+//
+//    Eigen::Affine3d affine_velo_to_cam_ = tf2::transformToEigen(lidar_ros_to_camera);
+//
+//    mLidarToCamera = affine_velo_to_cam_.matrix();
+//
+//    std::cout << "mLidarToCamera: " << mLidarToCamera << std::endl;
+//}
 
 Eigen::Matrix4d BagReader::calculate_gnss(const GnssData &gnss_data) {
 

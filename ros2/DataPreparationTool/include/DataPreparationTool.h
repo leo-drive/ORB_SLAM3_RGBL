@@ -14,6 +14,7 @@
 #include "rclcpp/serialized_message.hpp"
 
 #include "sensor_msgs/msg/image.hpp"
+#include "sensor_msgs/msg/camera_info.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "sensor_msgs/point_cloud2_iterator.hpp"
 
@@ -56,6 +57,7 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include "tf2_ros/static_transform_broadcaster.h"
 #include "tf2_ros/transform_broadcaster.h"
+#include "tf2_ros/transform_listener.h"
 #include <tf2_eigen/tf2_eigen.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
@@ -104,7 +106,7 @@ public:
 
     void saveData(ImageData image_data, PointCloudData point_cloud_data, const GnssData &gnss_data);
 
-    void visualizer(ImageData image_data, PointCloudData &point_cloud_data, const GnssData &gnss_data);
+    Eigen::Matrix4d visualizer(ImageData image_data, PointCloudData &point_cloud_data, const GnssData &gnss_data);
 
     void tf_publisher();
 
@@ -121,12 +123,16 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr m_point_cloud_publisher;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr m_image_publisher;
     rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr m_pose_array_publisher;
+    rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr m_camera_info_publisher;
 
     geometry_msgs::msg::PoseArray m_pose_array;
 
     std::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_static_broadcaster_;
     geometry_msgs::msg::TransformStamped trans_;
     std::unique_ptr<tf2_ros::TransformBroadcaster> mTransformBroadcaster;
+
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
+    std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
 
     int m_name_counter;
 

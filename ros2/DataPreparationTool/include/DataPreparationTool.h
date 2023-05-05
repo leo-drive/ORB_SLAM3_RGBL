@@ -100,8 +100,6 @@ class BagReader : public rclcpp::Node {
 public:
     BagReader(std::string bag_path, std::string dataset_path);
 
-    void createMatrices();
-
     void parseBag(const std::string &bag_path);
 
     void saveData(ImageData image_data, PointCloudData point_cloud_data, const GnssData &gnss_data);
@@ -153,9 +151,6 @@ private:
     GeographicLib::LocalCartesian m_local_origin;
 
     GnssData m_first_gnss_data;
-
-    Eigen::Matrix4d mLidarToCamera;
-    Eigen::Matrix4d mProjectionMatrix;
 };
 
 #endif //ORB_SLAM3_RGBL_DATA_PREPARATION_TOOL_H
